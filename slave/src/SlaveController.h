@@ -5,42 +5,49 @@
 #include <ArduinoJson.h>
 #include <Bounce2.h>
 
-#include "PatternGenerator.h"
+#include <vector>
 
-// Define status enum
-enum class Status {
+#include "PatternGenerator.h"
+#include "config.h"
+
+enum class State {
   IDLE,
-  BUSY,
-  ERROR,
+  HOME_REQUESTED,
   HOMING_X,
   HOMING_Y,
-  MOVING,
+  AWAITING_START,
+  MOVING_TO_PICK,
+  MOVING_TO_TARGET,
   PICKING,
   PLACING,
-  RETRACTING
-};
-
-// Settings structure
-struct Settings {
-  double speedInches = 40.0;
-  double accelerationInches = 20.0;
-  double homingSpeedInches = 7.5;
-  double pickDistanceInches = 5.0;
+  RETRACTING,
+  WAITING_TO_RETRIEVE,
+  EXECUTING_PATTERN
 };
 
 class SlaveController {
- private:
-  Status currentStatus;
-  Settings settings;
-  unsigned long stateStartTime;
+ public:
+  SlaveController();
+  ~SlaveController();
 
-  // Stepper motors
+  void setup();
+  void loop();
+
+ private:
+  // Configuration
+  MotionConfig motionConfig;
+
+  // Hardware objects
   AccelStepper* stepperX;
   AccelStepper* stepperY;
-
-  // Endstops
   Bounce xEndstop;
   Bounce yEndstop;
+
+  // State tracking
+  State currentState;
+  State nextStateAfterMove;
+  State nextStateAfterRetract;
+  unsigned long stateStartTime;
 
   // Pattern generation
   PatternGenerator patternGenerator;
@@ -48,20 +55,30 @@ class SlaveController {
   size_t currentPatternIndex;
   bool patternInProgress;
 
-  // Target positions
+  // Position tracking
   long targetX;
   long targetY;
 
-  // Methods
-  void processCommand(const String& command);
-  void updateSettings(const JsonObject& json);
-  void sendState();
-  String stateToString(Status state);
+  // Setup functions
+  void setupEndstops();
+  void setupSteppers();
+  void setupPneumatics();
+  void setupCommunication();
 
   // Motion control
   void homeXAxis();
   void homeYAxis();
   bool moveToXYPosition(const long xPos, const long yPos);
+
+  // State machine control
+  void updateInputs();
+  void runStateMachine();
+  void startNextState(const State nextState);
+  void waitForStartCommand();
+
+  // Sequence control
+  bool executePickSequence();
+  bool executePlaceSequence();
 
   // Pneumatic control
   void extendArm();
@@ -69,17 +86,10 @@ class SlaveController {
   void enableSuction();
   void disableSuction();
 
-  // Sequence control
-  bool executePickSequence();
-  bool executePlaceSequence();
-
-  // Utility
-  bool hasTimeElapsed(const unsigned long duration);
+  // Command handling
   void handleCommand(const char cmd, const String& params);
+  void printCurrentSettings();
 
- public:
-  SlaveController();
-  ~SlaveController();
-  void setup();
-  void loop();
+  // Utility functions
+  bool hasTimeElapsed(const unsigned long duration);
 };
