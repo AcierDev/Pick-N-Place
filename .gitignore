@@ -3,3 +3,107 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Output of build tools
+dist/
+build/
+out/
+.tmp/
+temp/
+
+# Logs
+logs
+*.log
+*.log.*
+pids
+*.pid
+*.pid.lock
+
+# Test coverage
+coverage/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.swd
+
+# MacOS
+.DS_Store
+
+# Linux
+*~
+.cache
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# TypeScript
+*.tsbuildinfo
+
+# Package managers
+package-lock.json
+yarn.lock
+.pnp.*
+.pnp.js
+
+# Build tools
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+
+# Static analysis and testing
+.nyc_output/
+eslintcache
+
+# Storybook
+storybook-static/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Local build overrides
+.local/
+local.settings.json
+
+# Prettier and ESLint
+.prettierignore
+.eslintcache
+.prettiercache
+
+# Svelte
+.svelte-kit/
+
+# React Native
+.expo/
+*.keystore
+
+# Capacitor
+android/
+ios/
+
+# Monorepo tools
+.pnpm-debug.log*
+pnpm-lock.yaml
+
+# Optional - uncomment if you don't want lock files
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

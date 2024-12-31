@@ -286,21 +286,22 @@ void runStateMachine() {
 
     case State::PICKING:
       if (executePickSequence()) {
-        startNextState(patternInProgress ? State::EXECUTING_PATTERN
-                                         : State::RETRACTING);
+        Serial.println(F("Pick sequence complete - retracting"));
+        startNextState(State::RETRACTING);
       }
       break;
 
     case State::PLACING:
       if (executePlaceSequence()) {
-        startNextState(patternInProgress ? State::EXECUTING_PATTERN
-                                         : State::RETRACTING);
+        Serial.println(F("Place sequence complete - retracting"));
+        startNextState(State::RETRACTING);
       }
       break;
 
     case State::RETRACTING:
       if (hasTimeElapsed(TIMING.retractDelay)) {
         retractArm();
+        Serial.println(F("Arm retracted - continuing pattern"));
         startNextState(nextStateAfterRetract);
       }
       break;
@@ -319,30 +320,45 @@ void runStateMachine() {
         break;
       }
 
-      Point target = currentPattern[currentPatternIndex];
-      targetX = CONVERSION.inchesToSteps(target.x);
-      targetY = CONVERSION.inchesToSteps(target.y);
+      static bool needToPickup = true;  // Track if we need to get a new piece
 
-      static bool positionReported = false;
-      if (!positionReported) {
-        Serial.print(F("Moving to point "));
-        Serial.print(currentPatternIndex);
-        Serial.print(F(" ("));
-        Serial.print(target.x);
-        Serial.print(F(", "));
-        Serial.print(target.y);
-        Serial.println(F(") inches"));
-        positionReported = true;
-      }
+      if (needToPickup) {
+        // Move to pickup location (0,0)
+        targetX = 0;
+        targetY = 0;
 
-      if (moveToXYPosition(targetX, targetY)) {
-        currentPatternIndex++;
-        positionReported = false;
-
-        if (currentPatternIndex % 2 == 1) {
+        if (moveToXYPosition(targetX, targetY)) {
+          Serial.println(
+              F("At pickup location (0,0) - starting pick sequence"));
+          nextStateAfterRetract = State::EXECUTING_PATTERN;
           startNextState(State::PICKING);
-        } else {
+          needToPickup = false;  // We've picked up a piece
+        }
+      } else {
+        // Move to placement location
+        Point target = currentPattern[currentPatternIndex];
+        targetX = CONVERSION.inchesToSteps(target.x);
+        targetY = CONVERSION.inchesToSteps(target.y);
+
+        static bool positionReported = false;
+        if (!positionReported) {
+          Serial.print(F("Moving to place at point "));
+          Serial.print(currentPatternIndex);
+          Serial.print(F(" ("));
+          Serial.print(target.x);
+          Serial.print(F(", "));
+          Serial.print(target.y);
+          Serial.println(F(") inches"));
+          positionReported = true;
+        }
+
+        if (moveToXYPosition(targetX, targetY)) {
+          Serial.println(F("At placement location - starting place sequence"));
+          nextStateAfterRetract = State::EXECUTING_PATTERN;
           startNextState(State::PLACING);
+          positionReported = false;
+          needToPickup = true;    // Need to get another piece after this
+          currentPatternIndex++;  // Move to next placement position
         }
       }
     } break;
