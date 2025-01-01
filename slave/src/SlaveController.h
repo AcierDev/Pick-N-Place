@@ -105,4 +105,10 @@ class SlaveController {
   unsigned long lastStateChangeTime;
   unsigned long stateStartCount;
   static constexpr unsigned long STATE_TIMEOUT_MS = 10000;  // 10 second timeout
+
+  // Add these new members
+  Point currentPickupLocation;
+  static constexpr double PIECE_SPACING = 3.0;  // 3 inches between pieces
+  static constexpr double SAFE_TRAVEL_Y =
+      5.0;  // Must move 3 inches forward before moving right
 };

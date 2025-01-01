@@ -103,28 +103,38 @@ export class CLIHandler {
         break;
 
       case "pattern":
-        if (args.length === 4) {
+        if (args.length === 6) {
           const rows = parseInt(args[0]);
           const cols = parseInt(args[1]);
           const startX = parseFloat(args[2]);
           const startY = parseFloat(args[3]);
+          const pickupX = parseFloat(args[4]);
+          const pickupY = parseFloat(args[5]);
           if (
             !isNaN(rows) &&
             !isNaN(cols) &&
             !isNaN(startX) &&
             !isNaN(startY) &&
+            !isNaN(pickupX) &&
+            !isNaN(pickupY) &&
             rows > 0 &&
             cols > 0
           ) {
-            this.master.sendCommand(`g ${rows} ${cols} ${startX} ${startY}`);
+            const gridWidth = 20.0;
+            const gridLength = 20.0;
+            this.master.sendCommand(
+              `start ${rows} ${cols} ${startX} ${startY} ${gridWidth} ${gridLength} ${pickupX} ${pickupY}`
+            );
           } else {
             console.log(
-              "Usage: pattern <rows> <cols> <startX> <startY> (rows/cols must be positive integers, startX/Y in inches)"
+              "Usage: pattern <rows> <cols> <startX> <startY> <pickupX> <pickupY> " +
+                "(rows/cols must be positive integers, positions in inches)"
             );
           }
         } else {
           console.log(
-            "Usage: pattern <rows> <cols> <startX> <startY> (rows/cols must be positive integers, startX/Y in inches)"
+            "Usage: pattern <rows> <cols> <startX> <startY> <pickupX> <pickupY> " +
+              "(rows/cols must be positive integers, positions in inches)"
           );
         }
         break;
@@ -197,7 +207,12 @@ Available commands:
     accel <value>         - Set acceleration (1-100 inches/sec²)
 
   Pattern Commands:
-    pattern <rows> <cols>  - Generate and execute placement pattern
+    pattern <rows> <cols> <startX> <startY> <pickupX> <pickupY>  
+           - Generate and execute placement pattern
+           - rows/cols: Number of pieces in each direction
+           - startX/Y: Grid origin position in inches
+           - pickupX/Y: Pickup location in inches
+           - Uses default 20x20 inch grid size
     start                  - Start the current cycle
 
   Manual Control:

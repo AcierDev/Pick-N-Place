@@ -148,49 +148,43 @@ void SlaveController::runStateMachine() {
       if (currentPatternIndex >= currentPattern.size()) {
         patternInProgress = false;
         currentState = State::AWAITING_START;
+        currentPickupLocation = Point(0, 0);  // Reset pickup location
         Serial.println(F("Pattern complete"));
         break;
       }
 
-      static bool needToPickup = true;  // Track if we need to get a new piece
+      static bool needToPickup = true;
+      static bool movingToSafeY = false;
 
       if (needToPickup) {
-        // Move to pickup location (0,0)
-        targetX = 0;
-        targetY = 0;
+        targetX = ConversionConfig::inchesToSteps(currentPickupLocation.x);
+        targetY = ConversionConfig::inchesToSteps(currentPickupLocation.y);
 
         if (moveToXYPosition(targetX, targetY)) {
-          Serial.println(
-              F("At pickup location (0,0) - starting pick sequence"));
+          currentPickupLocation.x += PIECE_SPACING;
           nextStateAfterRetract = State::EXECUTING_PATTERN;
           startNextState(State::PICKING);
-          needToPickup = false;  // We've picked up a piece
+          needToPickup = false;
+          movingToSafeY = true;
+        }
+      } else if (movingToSafeY) {
+        Point target = currentPattern[currentPatternIndex];
+        targetX = stepperX->currentPosition();
+        targetY = ConversionConfig::inchesToSteps(SAFE_TRAVEL_Y);
+
+        if (moveToXYPosition(targetX, targetY)) {
+          movingToSafeY = false;
         }
       } else {
-        // Move to placement location
         Point target = currentPattern[currentPatternIndex];
         targetX = ConversionConfig::inchesToSteps(target.x);
         targetY = ConversionConfig::inchesToSteps(target.y);
 
-        static bool positionReported = false;
-        if (!positionReported) {
-          Serial.print(F("Moving to place at point "));
-          Serial.print(currentPatternIndex);
-          Serial.print(F(" ("));
-          Serial.print(target.x);
-          Serial.print(F(", "));
-          Serial.print(target.y);
-          Serial.println(F(") inches"));
-          positionReported = true;
-        }
-
         if (moveToXYPosition(targetX, targetY)) {
-          Serial.println(F("At placement location - starting place sequence"));
           nextStateAfterRetract = State::EXECUTING_PATTERN;
           startNextState(State::PLACING);
-          positionReported = false;
-          needToPickup = true;    // Need to get another piece after this
-          currentPatternIndex++;  // Move to next placement position
+          needToPickup = true;
+          currentPatternIndex++;
         }
       }
     } break;
@@ -249,28 +243,11 @@ void SlaveController::homeYAxis() {
 }
 
 bool SlaveController::moveToXYPosition(const long xPos, const long yPos) {
-  static unsigned long lastMoveDebug = 0;
-  const unsigned long MOVE_DEBUG_INTERVAL =
-      500;  // Print every 500ms during movement
-
   stepperX->moveTo(xPos);
   stepperY->moveTo(yPos);
 
   stepperX->run();
   stepperY->run();
-
-  unsigned long currentTime = millis();
-  if (currentTime - lastMoveDebug >= MOVE_DEBUG_INTERVAL) {
-    Serial.print(F("Moving - X: "));
-    Serial.print(stepperX->currentPosition());
-    Serial.print(F("/"));
-    Serial.print(xPos);
-    Serial.print(F(" Y: "));
-    Serial.print(stepperY->currentPosition());
-    Serial.print(F("/"));
-    Serial.println(yPos);
-    lastMoveDebug = currentTime;
-  }
 
   bool xComplete = stepperX->distanceToGo() == 0;
   bool yComplete = stepperY->distanceToGo() == 0;
@@ -382,75 +359,93 @@ void SlaveController::handleCommand(const String& command,
 
   else if (command == "start") {
     if (stepperX->currentPosition() == 0 && stepperY->currentPosition() == 0) {
-      // Parse parameters: rows cols startX startY gridWidth gridLength
+      // Parse parameters: rows cols [startX startY gridWidth gridLength]
+      int rows = 0, cols = 0;
+      double startX = 0.0, startY = 0.0;
+      double gridWidth = 26.0, gridLength = 35.0;  // Default values
+
       String params_str = params;
       int firstSpace = params_str.indexOf(' ');
       if (firstSpace != -1) {
         String remainder = params_str.substring(firstSpace + 1);
-        int secondSpace = remainder.indexOf(' ');
-        if (secondSpace != -1) {
-          String startXStr = remainder.substring(secondSpace + 1);
+
+        // Parse required parameters (rows and cols)
+        rows = params_str.substring(0, firstSpace).toInt();
+        cols = remainder.toInt();
+
+        // Parse optional parameters if provided
+        int nextSpace = remainder.indexOf(' ');
+        if (nextSpace != -1) {
+          // Parse startX
+          String startXStr = remainder.substring(nextSpace + 1);
           int thirdSpace = startXStr.indexOf(' ');
           if (thirdSpace != -1) {
+            startX = startXStr.substring(0, thirdSpace).toFloat();
+
+            // Parse startY
             String startYStr = startXStr.substring(thirdSpace + 1);
             int fourthSpace = startYStr.indexOf(' ');
             if (fourthSpace != -1) {
+              startY = startYStr.substring(0, fourthSpace).toFloat();
+
+              // Parse gridWidth
               String gridWidthStr = startYStr.substring(fourthSpace + 1);
               int fifthSpace = gridWidthStr.indexOf(' ');
               if (fifthSpace != -1) {
-                String gridLengthStr = gridWidthStr.substring(fifthSpace + 1);
-
-                int rows = params_str.substring(0, firstSpace).toInt();
-                int cols = remainder.substring(0, secondSpace).toInt();
-                double startX = startXStr.substring(0, thirdSpace).toFloat();
-                double startY = startYStr.substring(0, fourthSpace).toFloat();
-                double gridWidth =
+                double providedWidth =
                     gridWidthStr.substring(0, fifthSpace).toFloat();
-                double gridLength = gridLengthStr.toFloat();
+                double providedLength = gridWidthStr.toFloat();
 
-                if (rows > 0 && cols > 0 && gridWidth > 0 && gridLength > 0) {
-                  // Generate the pattern with all parameters
-                  currentPattern = patternGenerator.generatePattern(
-                      rows, cols, startX, startY, gridWidth, gridLength);
-
-                  if (currentPattern.empty()) {
-                    Serial.println(F("Error: Pattern too large for grid"));
-                    return;
-                  }
-
-                  Serial.print(F("Starting pattern with "));
-                  Serial.print(rows);
-                  Serial.print(F(" rows, "));
-                  Serial.print(cols);
-                  Serial.print(F(" columns at ("));
-                  Serial.print(startX);
-                  Serial.print(F(", "));
-                  Serial.print(startY);
-                  Serial.print(F(") with grid size "));
-                  Serial.print(gridWidth);
-                  Serial.print(F("x"));
-                  Serial.print(gridLength);
-                  Serial.println(F(" inches"));
-
-                  currentPatternIndex = 0;
-                  patternInProgress = true;
-                  startNextState(State::EXECUTING_PATTERN);
-                } else {
-                  Serial.println(F("Error: Invalid parameters. Must be > 0"));
-                }
+                // Only use provided values if they're greater than 0
+                if (providedWidth > 0) gridWidth = providedWidth;
+                if (providedLength > 0) gridLength = providedLength;
               }
             }
           }
         }
+
+        if (rows > 0 && cols > 0) {
+          // Generate the pattern with parameters
+          currentPattern = patternGenerator.generatePattern(
+              rows, cols, startX, startY, gridWidth, gridLength);
+
+          if (currentPattern.empty()) {
+            Serial.println(F("Error: Pattern too large for grid"));
+            return;
+          }
+
+          Serial.print(F("Starting pattern with "));
+          Serial.print(rows);
+          Serial.print(F(" rows, "));
+          Serial.print(cols);
+          Serial.print(F(" columns at ("));
+          Serial.print(startX);
+          Serial.print(F(", "));
+          Serial.print(startY);
+          Serial.print(F(") with grid size "));
+          Serial.print(gridWidth);
+          Serial.print(F("x"));
+          Serial.print(gridLength);
+          Serial.println(F(" inches"));
+
+          currentPatternIndex = 0;
+          patternInProgress = true;
+          startNextState(State::EXECUTING_PATTERN);
+        } else {
+          Serial.println(F("Error: Rows and columns must be > 0"));
+        }
       }
       if (!patternInProgress) {
         Serial.println(
-            F("Error: Invalid parameters. Use: start ROWS COLS START_X START_Y "
-              "GRID_WIDTH GRID_LENGTH"));
+            F("Error: Invalid parameters. Use: start ROWS COLS [START_X "
+              "START_Y GRID_WIDTH GRID_LENGTH]"));
       }
     } else {
       Serial.println(F("Error: Must home axes first. Send 'home' to home."));
     }
+
+    // Reset pickup location when starting new pattern
+    currentPickupLocation = Point(0, 0);
   }
 
   else if (command == "goto") {
@@ -621,9 +616,20 @@ void SlaveController::checkForCommands() {
     command.trim();
     params.trim();
 
-    // Special handling for emergency stop
-    if (command == "stop") {
-      emergencyStop();
+    // Special handling for emergency stop and home commands
+    if (command == "stop" || command == "home") {
+      if (command == "stop") {
+        emergencyStop();
+      } else {  // home command
+        Serial.println(F("Starting homing sequence..."));
+        // Cancel any ongoing movements
+        stepperX->stop();
+        stepperY->stop();
+        // Reset pattern state
+        patternInProgress = false;
+        // Start homing sequence
+        startNextState(State::HOME_REQUESTED);
+      }
       return;
     }
 

@@ -50,13 +50,23 @@ export class WebSocketServer {
                   typeof cmd.params.cols === "number" &&
                   typeof cmd.params.startX === "number" &&
                   typeof cmd.params.startY === "number" &&
-                  typeof cmd.params.gridWidth === "number" &&
-                  typeof cmd.params.gridLength === "number"
+                  typeof cmd.params.pickupX === "number" &&
+                  typeof cmd.params.pickupY === "number"
                 ) {
-                  serialCommand = `start ${cmd.params.rows} ${cmd.params.cols} ${cmd.params.startX} ${cmd.params.startY} ${cmd.params.gridWidth} ${cmd.params.gridLength}`;
+                  // Use provided grid dimensions or default to 20x20
+                  const gridWidth =
+                    typeof cmd.params.gridWidth === "number"
+                      ? cmd.params.gridWidth
+                      : 20.0;
+                  const gridLength =
+                    typeof cmd.params.gridLength === "number"
+                      ? cmd.params.gridLength
+                      : 20.0;
+
+                  serialCommand = `start ${cmd.params.rows} ${cmd.params.cols} ${cmd.params.startX} ${cmd.params.startY} ${gridWidth} ${gridLength} ${cmd.params.pickupX} ${cmd.params.pickupY}`;
                 } else {
                   console.error(
-                    "Invalid start parameters - requires rows, cols, startX, startY, gridWidth, and gridLength"
+                    "Invalid start parameters - requires rows, cols, startX, startY, pickupX, and pickupY (gridWidth and gridLength optional)"
                   );
                   return;
                 }

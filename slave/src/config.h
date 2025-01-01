@@ -17,8 +17,8 @@ struct ConversionConfig {
 
 // Motion Parameters
 struct MotionConfig {
-  double speedInches = 20.0;
-  double accelerationInches = 10.0;
+  double speedInches = 30.0;
+  double accelerationInches = 20.0;
   const double homingSpeedInches = 5;
   const double pickDistanceInches = 5.0;
 
@@ -39,18 +39,18 @@ struct MotionConfig {
 // Pin Assignments
 struct PinConfig {
   // X-Axis
-  static constexpr uint8_t xPulse = 6;
-  static constexpr uint8_t xDirection = 7;
-  static constexpr uint8_t xEndstop = 13;
+  static constexpr uint8_t xPulse = 16;
+  static constexpr uint8_t xDirection = 17;
+  static constexpr uint8_t xEndstop = 19;
 
   // Y-Axis
-  static constexpr uint8_t yPulse = 11;
-  static constexpr uint8_t yDirection = 12;
-  static constexpr uint8_t yEndstop = 10;
+  static constexpr uint8_t yPulse = 5;
+  static constexpr uint8_t yDirection = 18;
+  static constexpr uint8_t yEndstop = 21;
 
   // Pneumatics
-  static constexpr uint8_t extension = 3;
-  static constexpr uint8_t suction = 4;
+  static constexpr uint8_t extension = 22;
+  static constexpr uint8_t suction = 23;
 };
 
 // Timing Parameters
