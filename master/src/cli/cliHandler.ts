@@ -54,16 +54,98 @@ export class CLIHandler {
         }
         break;
 
-      case "send":
-        if (args.length > 0) {
-          this.master.sendCommand(args.join(" "));
+      case "home":
+        this.master.sendCommand("h");
+        break;
+
+      case "start":
+        this.master.sendCommand("s");
+        break;
+
+      case "move":
+        if (args.length === 2) {
+          const x = parseFloat(args[0]);
+          const y = parseFloat(args[1]);
+          if (!isNaN(x) && !isNaN(y)) {
+            this.master.sendCommand(`p ${x} ${y}`);
+          } else {
+            console.log("Usage: move <x> <y> (in inches)");
+          }
         } else {
-          console.log("Usage: send <command>");
+          console.log("Usage: move <x> <y> (in inches)");
         }
         break;
 
-      case "wave":
-        this.activateWave();
+      case "speed":
+        if (args.length === 1) {
+          const speed = parseFloat(args[0]);
+          if (!isNaN(speed) && speed > 0 && speed <= 100) {
+            this.master.sendCommand(`v ${speed}`);
+          } else {
+            console.log("Usage: speed <value> (1-100 inches/sec)");
+          }
+        } else {
+          console.log("Usage: speed <value> (1-100 inches/sec)");
+        }
+        break;
+
+      case "accel":
+        if (args.length === 1) {
+          const accel = parseFloat(args[0]);
+          if (!isNaN(accel) && accel > 0 && accel <= 100) {
+            this.master.sendCommand(`a ${accel}`);
+          } else {
+            console.log("Usage: accel <value> (1-100 inches/sec²)");
+          }
+        } else {
+          console.log("Usage: accel <value> (1-100 inches/sec²)");
+        }
+        break;
+
+      case "pattern":
+        if (args.length === 2) {
+          const rows = parseInt(args[0]);
+          const cols = parseInt(args[1]);
+          if (!isNaN(rows) && !isNaN(cols) && rows > 0 && cols > 0) {
+            this.master.sendCommand(`g ${rows} ${cols}`);
+          } else {
+            console.log("Usage: pattern <rows> <cols> (positive integers)");
+          }
+        } else {
+          console.log("Usage: pattern <rows> <cols> (positive integers)");
+        }
+        break;
+
+      case "arm":
+        if (args[0] === "extend") {
+          this.master.sendCommand("x 1");
+        } else if (args[0] === "retract") {
+          this.master.sendCommand("x 0");
+        } else {
+          console.log("Usage: arm <extend|retract>");
+        }
+        break;
+
+      case "suction":
+        if (args[0] === "on") {
+          this.master.sendCommand("u 1");
+        } else if (args[0] === "off") {
+          this.master.sendCommand("u 0");
+        } else {
+          console.log("Usage: suction <on|off>");
+        }
+        break;
+
+      case "pick":
+        this.master.sendCommand("k");
+        break;
+
+      case "place":
+        this.master.sendCommand("l");
+        break;
+
+      case "info":
+        this.master.sendCommand("?");
         break;
 
       case "exit":
@@ -79,13 +161,29 @@ export class CLIHandler {
   private showHelp(): void {
     console.log(`
 Available commands:
-  help                    - Show this help message
-  status                  - Show current slave state
-  settings show          - Show current settings
-  settings set <key> <value> - Update a setting
-  send <command>         - Send a command to the slave
-  wave                   - Activate relay wave effect
-  exit/quit              - Exit the program
+  System Commands:
+    help                    - Show this help message
+    status                  - Show current slave state
+    settings show          - Show current settings
+    settings set <key> <value> - Update a setting
+    exit, quit             - Exit the program
+    info                   - Show current machine settings
+
+  Motion Commands:
+    home                   - Home both axes
+    move <x> <y>          - Move to position in inches
+    speed <value>         - Set speed (1-100 inches/sec)
+    accel <value>         - Set acceleration (1-100 inches/sec²)
+
+  Pattern Commands:
+    pattern <rows> <cols>  - Generate and execute placement pattern
+    start                  - Start the current cycle
+
+  Manual Control:
+    arm <extend|retract>   - Control arm extension
+    suction <on|off>       - Control vacuum suction
+    pick                   - Execute pick sequence
+    place                  - Execute place sequence
 `);
   }
 
@@ -120,37 +218,6 @@ Available commands:
       console.log("Setting updated successfully");
     } catch (error) {
       console.log("Error updating setting:", error);
-    }
-  }
-
-  private async activateWave(): Promise<void> {
-    const delay = (ms: number) =>
-      new Promise((resolve) => setTimeout(resolve, ms));
-    const relayCount = 4;
-    let forward = true;
-
-    try {
-      while (true) {
-        if (forward) {
-          // Forward wave
-          for (let i = 1; i <= relayCount; i++) {
-            this.master.sendCommand(`turn on ${i}`);
-            await delay(200);
-            this.master.sendCommand(`turn off ${i}`);
-          }
-          forward = false;
-        } else {
-          // Backward wave
-          for (let i = relayCount; i >= 1; i--) {
-            this.master.sendCommand(`turn on ${i}`);
-            await delay(200);
-            this.master.sendCommand(`turn off ${i}`);
-          }
-          forward = true;
-        }
-      }
-    } catch (error) {
-      console.log("Wave effect interrupted:", error);
     }
   }
 }

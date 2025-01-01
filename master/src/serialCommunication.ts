@@ -2,6 +2,7 @@ import { SerialPort } from "serialport";
 import { ReadlineParser } from "@serialport/parser-readline";
 import { SlaveState, SlaveSettings, Command } from "./typings/types";
 import { detectMicrocontrollerPort } from "./util/portDetection";
+import chalk from "chalk";
 
 export class SerialCommunication {
   private port: SerialPort | null;
@@ -15,12 +16,14 @@ export class SerialCommunication {
   async connect(): Promise<boolean> {
     const portPath = await detectMicrocontrollerPort();
     if (!portPath) {
-      console.error("Microcontroller not found");
+      console.error(chalk.red("✗ Microcontroller not found"));
       return false;
     }
 
     try {
-      console.log(`Attempting to connect to ${portPath} at 9600 baud`);
+      console.log(
+        chalk.blue(`⟸ Attempting to connect to ${portPath} at 9600 baud`)
+      );
 
       this.port = new SerialPort({
         path: portPath,
@@ -50,15 +53,24 @@ export class SerialCommunication {
 
       // Debug only parsed messages
       this.parser.on("data", (line) => {
-        // console.log("Received:", line);
+        if (line.startsWith("STATE")) {
+          console.log(
+            chalk.green("⟹ State update:"),
+            chalk.cyan(line.slice(6))
+          );
+        } else {
+          console.log(chalk.green("⟹ ESP32:"), chalk.cyan(line));
+        }
       });
 
       console.log(
-        `Successfully connected to microcontroller on port ${portPath}`
+        chalk.green(
+          `✓ Successfully connected to microcontroller on port ${portPath}`
+        )
       );
       return true;
     } catch (error) {
-      console.error("Error connecting to microcontroller:", error);
+      console.error(chalk.red("✗ Error connecting to microcontroller:"), error);
       if (this.port) {
         try {
           await new Promise<void>((resolve) => {
@@ -80,11 +92,16 @@ export class SerialCommunication {
 
   sendCommand(command: Command): void {
     this.checkConnection();
+    console.log(chalk.yellow("⟸ Sending command:"), chalk.cyan(command));
     this.port!.write(`${command}\n`);
   }
 
   sendSettings(settings: SlaveSettings): void {
     this.checkConnection();
+    console.log(
+      chalk.yellow("⟸ Sending settings:"),
+      chalk.cyan(JSON.stringify(settings))
+    );
     this.port!.write(`SETTINGS ${JSON.stringify(settings)}\n`);
   }
 

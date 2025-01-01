@@ -87,7 +87,7 @@ class SlaveController {
   void disableSuction();
 
   // Command handling
-  void handleCommand(const char cmd, const String& params);
+  void handleCommand(const String& command, const String& params);
   void printCurrentSettings();
 
   // Utility functions

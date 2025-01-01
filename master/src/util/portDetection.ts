@@ -1,9 +1,13 @@
 import { SerialPort } from "serialport";
+import chalk from "chalk";
 
 export async function detectMicrocontrollerPort(): Promise<string | null> {
   try {
     const ports = await SerialPort.list();
-    console.log("Available ports:", JSON.stringify(ports, null, 2));
+    console.log(
+      chalk.blue("Available ports:"),
+      chalk.gray(JSON.stringify(ports, null, 2))
+    );
 
     // Known USB-to-Serial converter IDs
     const knownVendorIds = [
@@ -27,7 +31,10 @@ export async function detectMicrocontrollerPort(): Promise<string | null> {
     });
 
     if (microcontrollerPort) {
-      console.log("Found port by vendor ID:", microcontrollerPort);
+      console.log(
+        chalk.green("✓ Found port by vendor ID:"),
+        chalk.cyan(JSON.stringify(microcontrollerPort))
+      );
       return microcontrollerPort.path;
     }
 
@@ -45,14 +52,17 @@ export async function detectMicrocontrollerPort(): Promise<string | null> {
     });
 
     if (serialPort) {
-      console.log("Found port by path pattern:", serialPort);
+      console.log(
+        chalk.green("✓ Found port by path pattern:"),
+        chalk.cyan(JSON.stringify(serialPort))
+      );
     } else {
-      console.log("No suitable port found");
+      console.log(chalk.yellow("⚠ No suitable port found"));
     }
 
     return serialPort ? serialPort.path : null;
   } catch (error) {
-    console.error("Error detecting microcontroller port:", error);
+    console.error(chalk.red("✗ Error detecting microcontroller port:"), error);
     return null;
   }
 }

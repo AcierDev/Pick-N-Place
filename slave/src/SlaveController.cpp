@@ -264,235 +264,130 @@ bool SlaveController::executePlaceSequence() {
 
 void SlaveController::waitForStartCommand() {
   if (Serial.available() > 0) {
-    char cmd = Serial.read();
-
-    // Wait briefly for any parameters to arrive
-    delay(5);
+    String command = Serial.readStringUntil(' ');
     String params = Serial.readStringUntil('\n');
-    params.trim();  // Remove whitespace
-
-    handleCommand(cmd, params);
+    command.trim();
+    params.trim();
+    handleCommand(command, params);
   }
 }
 
-void SlaveController::handleCommand(const char cmd, const String& params) {
-  switch (cmd) {
-    case 'h':
-      if (params.length() == 0) {
-        Serial.println(F("Starting homing sequence..."));
-        startNextState(State::HOME_REQUESTED);
-      }
-      break;
+void SlaveController::handleCommand(const String& command,
+                                    const String& params) {
+  if (command == "home") {
+    Serial.println(F("Starting homing sequence..."));
+    startNextState(State::HOME_REQUESTED);
+  }
 
-    case 's':
-      if (params.length() == 0) {
-        if (stepperX->currentPosition() == 0 &&
-            stepperY->currentPosition() == 0) {
-          Serial.println(F("Starting cycle..."));
-          startNextState(State::MOVING_TO_PICK);
-          stepperX->moveTo(motionConfig.getPickDistance());
-          stepperY->moveTo(motionConfig.getPickDistance());
-        } else {
-          Serial.println(F("Error: Must home axes first. Send 'h' to home."));
-        }
-      }
-      break;
+  else if (command == "start") {
+    if (stepperX->currentPosition() == 0 && stepperY->currentPosition() == 0) {
+      Serial.println(F("Starting cycle..."));
+      startNextState(State::MOVING_TO_PICK);
+      stepperX->moveTo(motionConfig.getPickDistance());
+      stepperY->moveTo(motionConfig.getPickDistance());
+    } else {
+      Serial.println(F("Error: Must home axes first. Send 'home' to home."));
+    }
+  }
 
-    case 'p': {
-      // Find position of first space
-      int firstSpace = params.indexOf(' ');
-      if (firstSpace != -1) {
-        // Get remainder of string after first space
-        String yPart = params.substring(firstSpace + 1);
-        yPart.trim();
+  else if (command == "goto") {
+    // Find position of first space
+    int firstSpace = params.indexOf(' ');
+    if (firstSpace != -1) {
+      // Get remainder of string after first space
+      String yPart = params.substring(firstSpace + 1);
+      yPart.trim();
 
-        // Convert X and Y values from inches to steps
-        double xInches = params.substring(0, firstSpace).toFloat();
-        double yInches = yPart.toFloat();
+      // Convert X and Y values from inches to steps
+      double xInches = params.substring(0, firstSpace).toFloat();
+      double yInches = yPart.toFloat();
 
-        targetX = ConversionConfig::inchesToSteps(xInches);
-        targetY = ConversionConfig::inchesToSteps(yInches);
+      targetX = ConversionConfig::inchesToSteps(xInches);
+      targetY = ConversionConfig::inchesToSteps(yInches);
 
-        Serial.print(F("Moving to X:"));
-        Serial.print(xInches);
-        Serial.print(F(" Y:"));
-        Serial.print(yInches);
-        Serial.println(F(" inches"));
+      Serial.print(F("Moving to X:"));
+      Serial.print(xInches);
+      Serial.print(F(" Y:"));
+      Serial.print(yInches);
+      Serial.println(F(" inches"));
 
-        startNextState(State::MOVING_TO_TARGET);
-      } else {
-        Serial.println(F("Invalid position format. Use: p X Y (in inches)"));
-      }
-    } break;
+      startNextState(State::MOVING_TO_TARGET);
+    } else {
+      Serial.println(F("Invalid position format. Use: goto X Y (in inches)"));
+    }
+  }
 
-    case 'v': {
-      if (params.length() > 0) {
-        String speedStr = params;
-        speedStr.trim();
-        double newSpeed = speedStr.toFloat();
-        if (newSpeed > 0 && newSpeed <= 100.0) {  // Max 100 inches/sec
-          motionConfig.speedInches = newSpeed;
-          stepperX->setMaxSpeed(motionConfig.getSpeed());
-          stepperY->setMaxSpeed(motionConfig.getSpeed());
-          Serial.print(F("Speed set to: "));
-          Serial.print(motionConfig.speedInches);
-          Serial.println(F(" inches/sec"));
-        } else {
-          Serial.println(F("Invalid speed. Use value between 1-100"));
-        }
-      }
-    } break;
+  else if (command == "speed") {
+    String speedStr = params;
+    speedStr.trim();
+    double newSpeed = speedStr.toFloat();
+    if (newSpeed > 0 && newSpeed <= 100.0) {  // Max 100 inches/sec
+      motionConfig.speedInches = newSpeed;
+      stepperX->setMaxSpeed(motionConfig.getSpeed());
+      stepperY->setMaxSpeed(motionConfig.getSpeed());
+      Serial.print(F("Speed set to: "));
+      Serial.print(motionConfig.speedInches);
+      Serial.println(F(" inches/sec"));
+    } else {
+      Serial.println(F("Invalid speed. Use value between 1-100"));
+    }
+  }
 
-    case 'a': {
-      if (params.length() > 0) {
-        String accelStr = params;
-        accelStr.trim();
-        double newAccel = accelStr.toFloat();
-        if (newAccel > 0 && newAccel <= 100.0) {  // Max 100 inches/sec²
-          motionConfig.accelerationInches = newAccel;
-          stepperX->setAcceleration(motionConfig.getAcceleration());
-          stepperY->setAcceleration(motionConfig.getAcceleration());
-          Serial.print(F("Acceleration set to: "));
-          Serial.print(motionConfig.accelerationInches);
-          Serial.println(F(" inches/sec²"));
-        }
-      }
-    } break;
+  else if (command == "accel") {
+    String accelStr = params;
+    accelStr.trim();
+    double newAccel = accelStr.toFloat();
+    if (newAccel > 0 && newAccel <= 100.0) {  // Max 100 inches/sec²
+      motionConfig.accelerationInches = newAccel;
+      stepperX->setAcceleration(motionConfig.getAcceleration());
+      stepperY->setAcceleration(motionConfig.getAcceleration());
+      Serial.print(F("Acceleration set to: "));
+      Serial.print(motionConfig.accelerationInches);
+      Serial.println(F(" inches/sec²"));
+    }
+  }
 
-    case '?':  // Print current settings
-      printCurrentSettings();
-      break;
+  else if (command == "extend") {
+    extendArm();
+    Serial.println(F("Arm extended"));
+  }
 
-    case 'g': {  // Generate new pattern
-      int firstSpace = params.indexOf(' ');
-      if (firstSpace != -1) {
-        String remainder = params.substring(firstSpace + 1);
-        remainder.trim();
+  else if (command == "retract") {
+    retractArm();
+    Serial.println(F("Arm retracted"));
+  }
 
-        int rows = params.substring(0, firstSpace).toInt();
-        int cols = remainder.toInt();
+  else if (command == "suction_on") {
+    enableSuction();
+    Serial.println(F("Suction enabled"));
+  }
 
-        Serial.print(F("Attempting to generate pattern with rows="));
-        Serial.print(rows);
-        Serial.print(F(" cols="));
-        Serial.println(cols);
+  else if (command == "suction_off") {
+    disableSuction();
+    Serial.println(F("Suction disabled"));
+  }
 
-        if (rows > 0 && cols > 0) {
-          currentPattern = patternGenerator.generatePattern(rows, cols);
-          currentPatternIndex = 0;
+  else if (command == "stop") {
+    // Implement emergency stop
+    stepperX->stop();
+    stepperY->stop();
+    disableSuction();
+    retractArm();
+    Serial.println(F("Emergency stop executed"));
+  }
 
-          if (currentPattern.empty()) {
-            Serial.println(F("Error: Pattern too large for tray"));
-          } else {
-            Serial.print(F("Generated pattern with "));
-            Serial.print(currentPattern.size());
-            Serial.println(F(" points"));
-
-            // Debug output for pattern points
-            for (size_t i = 0; i < currentPattern.size(); i++) {
-              Serial.print(F("Point "));
-              Serial.print(i);
-              Serial.print(F(": ("));
-              Serial.print(currentPattern[i].x);
-              Serial.print(F(", "));
-              Serial.print(currentPattern[i].y);
-              Serial.println(F(")"));
-            }
-
-            // Start pattern execution if homed
-            if (stepperX->currentPosition() == 0 &&
-                stepperY->currentPosition() == 0) {
-              patternInProgress = true;
-              startNextState(State::EXECUTING_PATTERN);
-              Serial.println(F("Starting pattern execution"));
-            } else {
-              Serial.println(
-                  F("Error: Must home axes first. Send 'h' to home."));
-            }
-          }
-        } else {
-          Serial.println(F("Invalid rows/columns. Must be > 0"));
-        }
-      } else {
-        Serial.println(F("Invalid pattern format. Use: g ROWS COLS"));
-      }
-    } break;
-
-    case 'x': {  // Manual extension control
-      if (params.length() > 0) {
-        if (params[0] == '1') {
-          extendArm();
-          Serial.println(F("Arm extended"));
-        } else if (params[0] == '0') {
-          retractArm();
-          Serial.println(F("Arm retracted"));
-        }
-      } else {
-        Serial.println(F("Invalid extension command. Use: x 0|1"));
-      }
-    } break;
-
-    case 'u': {  // Manual suction control
-      if (params.length() > 0) {
-        if (params[0] == '1') {
-          enableSuction();
-          Serial.println(F("Suction enabled"));
-        } else if (params[0] == '0') {
-          disableSuction();
-          Serial.println(F("Suction disabled"));
-        }
-      } else {
-        Serial.println(F("Invalid suction command. Use: u 0|1"));
-      }
-    } break;
-
-    case 'k': {  // Manual pick sequence
-      if (params.length() == 0) {
-        stateStartTime = millis();  // Reset timer for sequence
-        Serial.println(F("Starting pick sequence..."));
-
-        bool pickComplete = false;
-        while (!pickComplete) {
-          pickComplete = executePickSequence();
-          delay(10);
-        }
-
-        delay(TimingConfig::retractDelay);
-        retractArm();
-        Serial.println(F("Pick sequence complete"));
-      }
-    } break;
-
-    case 'l': {  // Manual place sequence
-      if (params.length() == 0) {
-        stateStartTime = millis();  // Reset timer for sequence
-        Serial.println(F("Starting place sequence..."));
-
-        bool placeComplete = false;
-        while (!placeComplete) {
-          placeComplete = executePlaceSequence();
-          delay(10);
-        }
-
-        delay(TimingConfig::retractDelay);
-        retractArm();
-        Serial.println(F("Place sequence complete"));
-      }
-    } break;
-
-    default:
-      Serial.println(F("Unknown command. Available commands:"));
-      Serial.println(F("h - Home axes (press enter after)"));
-      Serial.println(F("s - Start cycle (press enter after)"));
-      Serial.println(F("p X Y - Move to position (e.g., p 1000 2000)"));
-      Serial.println(F("v SPEED - Set speed (inches/sec, e.g., v 5)"));
-      Serial.println(F("a ACCEL - Set acceleration (inches/sec², e.g., a 10)"));
-      Serial.println(F("x 0|1 - Retract/Extend arm"));
-      Serial.println(F("u 0|1 - Disable/Enable suction"));
-      Serial.println(F("k - Execute pick sequence"));
-      Serial.println(F("l - Execute place sequence"));
-      Serial.println(F("? - Print current settings"));
-      break;
+  else {
+    Serial.println(F("Unknown command. Available commands:"));
+    Serial.println(F("home           - Home axes"));
+    Serial.println(F("start          - Start cycle"));
+    Serial.println(F("goto X Y       - Move to position (inches)"));
+    Serial.println(F("speed VALUE    - Set speed (inches/sec, 1-100)"));
+    Serial.println(F("accel VALUE    - Set acceleration (inches/sec², 1-100)"));
+    Serial.println(F("extend         - Extend arm"));
+    Serial.println(F("retract        - Retract arm"));
+    Serial.println(F("suction_on     - Enable suction"));
+    Serial.println(F("suction_off    - Disable suction"));
+    Serial.println(F("stop           - Emergency stop"));
   }
 }
 
