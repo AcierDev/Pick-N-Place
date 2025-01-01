@@ -8,6 +8,7 @@ import path from "path";
 import { CLIHandler } from "./cli/cliHandler";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import chalk from "chalk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -74,6 +75,15 @@ class Master {
         await this.attemptReconnection();
       });
     }
+
+    this.serial.onMessage((message: string) => {
+      console.log(chalk.green("⟹ Message:"), chalk.cyan(message));
+    });
+
+    this.serial.onDebugMessage((message: string) => {
+      console.log(chalk.blue("⟸ Debug message:"), chalk.cyan(message));
+    });
+    
   }
 
   private setupWebSocketListeners(): void {

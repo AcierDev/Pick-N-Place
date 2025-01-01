@@ -103,16 +103,29 @@ export class CLIHandler {
         break;
 
       case "pattern":
-        if (args.length === 2) {
+        if (args.length === 4) {
           const rows = parseInt(args[0]);
           const cols = parseInt(args[1]);
-          if (!isNaN(rows) && !isNaN(cols) && rows > 0 && cols > 0) {
-            this.master.sendCommand(`g ${rows} ${cols}`);
+          const startX = parseFloat(args[2]);
+          const startY = parseFloat(args[3]);
+          if (
+            !isNaN(rows) &&
+            !isNaN(cols) &&
+            !isNaN(startX) &&
+            !isNaN(startY) &&
+            rows > 0 &&
+            cols > 0
+          ) {
+            this.master.sendCommand(`g ${rows} ${cols} ${startX} ${startY}`);
           } else {
-            console.log("Usage: pattern <rows> <cols> (positive integers)");
+            console.log(
+              "Usage: pattern <rows> <cols> <startX> <startY> (rows/cols must be positive integers, startX/Y in inches)"
+            );
           }
         } else {
-          console.log("Usage: pattern <rows> <cols> (positive integers)");
+          console.log(
+            "Usage: pattern <rows> <cols> <startX> <startY> (rows/cols must be positive integers, startX/Y in inches)"
+          );
         }
         break;
 
@@ -153,8 +166,16 @@ export class CLIHandler {
         this.rl.close();
         break;
 
+      case "stop":
+        this.master.sendCommand("stop");
+        console.log("Emergency stop initiated");
+        break;
+
       default:
-        console.log('Unknown command. Type "help" for available commands.');
+        // Forward any unrecognized command directly to the slave
+        this.master.sendCommand(
+          command + (args.length ? " " + args.join(" ") : "")
+        );
     }
   }
 

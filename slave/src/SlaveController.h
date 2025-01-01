@@ -92,4 +92,17 @@ class SlaveController {
 
   // Utility functions
   bool hasTimeElapsed(const unsigned long duration);
+
+  // Add these new methods
+  void sendCurrentState();
+  const char* stateToString(State state);
+
+  void checkForCommands();
+
+  void emergencyStop();
+
+  // Debug tracking
+  unsigned long lastStateChangeTime;
+  unsigned long stateStartCount;
+  static constexpr unsigned long STATE_TIMEOUT_MS = 10000;  // 10 second timeout
 };

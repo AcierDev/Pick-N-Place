@@ -44,7 +44,22 @@ export class WebSocketServer {
 
             switch (cmd.type) {
               case "start":
-                serialCommand = "start";
+                if (
+                  cmd.params &&
+                  typeof cmd.params.rows === "number" &&
+                  typeof cmd.params.cols === "number" &&
+                  typeof cmd.params.startX === "number" &&
+                  typeof cmd.params.startY === "number" &&
+                  typeof cmd.params.gridWidth === "number" &&
+                  typeof cmd.params.gridLength === "number"
+                ) {
+                  serialCommand = `start ${cmd.params.rows} ${cmd.params.cols} ${cmd.params.startX} ${cmd.params.startY} ${cmd.params.gridWidth} ${cmd.params.gridLength}`;
+                } else {
+                  console.error(
+                    "Invalid start parameters - requires rows, cols, startX, startY, gridWidth, and gridLength"
+                  );
+                  return;
+                }
                 break;
 
               case "stop":

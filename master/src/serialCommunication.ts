@@ -27,7 +27,7 @@ export class SerialCommunication {
 
       this.port = new SerialPort({
         path: portPath,
-        baudRate: 9600,
+        baudRate: 115200,
         autoOpen: false,
       });
 
@@ -50,18 +50,6 @@ export class SerialCommunication {
       });
 
       this.parser = this.port.pipe(new ReadlineParser({ delimiter: "\r\n" }));
-
-      // Debug only parsed messages
-      this.parser.on("data", (line) => {
-        if (line.startsWith("STATE")) {
-          console.log(
-            chalk.green("⟹ State update:"),
-            chalk.cyan(line.slice(6))
-          );
-        } else {
-          console.log(chalk.green("⟹ ESP32:"), chalk.cyan(line));
-        }
-      });
 
       console.log(
         chalk.green(
@@ -111,6 +99,20 @@ export class SerialCommunication {
       if (data.startsWith("STATE")) {
         const stateData = JSON.parse(data.slice(6));
         callback(stateData);
+      }
+    });
+  }
+
+  onMessage(callback: (message: string) => void): void {
+    this.checkConnection();
+    this.parser!.on("data", callback);
+  }
+
+  onDebugMessage(callback: (message: string) => void): void {
+    this.checkConnection();
+    this.parser!.on("data", (data: string) => {
+      if (data.startsWith("DEBUG")) {
+        callback(data.slice(6));
       }
     });
   }

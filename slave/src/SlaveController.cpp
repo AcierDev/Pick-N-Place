@@ -8,7 +8,9 @@ SlaveController::SlaveController()
       currentPatternIndex(0),
       patternInProgress(false),
       targetX(0),
-      targetY(0) {
+      targetY(0),
+      lastStateChangeTime(0),
+      stateStartCount(0) {
   // Initialize steppers
   stepperX = new AccelStepper(1, PinConfig::xPulse, PinConfig::xDirection);
   stepperY = new AccelStepper(1, PinConfig::yPulse, PinConfig::yDirection);
@@ -56,6 +58,8 @@ void SlaveController::setupCommunication() {
 
 void SlaveController::loop() {
   updateInputs();
+  // Check for commands before running state machine
+  checkForCommands();
   runStateMachine();
 }
 
@@ -65,6 +69,29 @@ void SlaveController::updateInputs() {
 }
 
 void SlaveController::runStateMachine() {
+  static unsigned long lastDebugOutput = 0;
+  const unsigned long DEBUG_INTERVAL = 1000;  // Print debug every second
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastDebugOutput >= DEBUG_INTERVAL) {
+    Serial.print(F("Current state: "));
+    Serial.print(stateToString(currentState));
+    Serial.print(F(" Time in state: "));
+    Serial.print(currentTime - stateStartTime);
+    Serial.println(F("ms"));
+    lastDebugOutput = currentTime;
+  }
+
+  // Check for state timeout - exclude IDLE and AWAITING_START states
+  if (currentTime - stateStartTime > STATE_TIMEOUT_MS &&
+      currentState != State::IDLE && currentState != State::AWAITING_START) {
+    Serial.print(F("ERROR: State "));
+    Serial.print(stateToString(currentState));
+    Serial.println(F(" has timed out. Executing emergency stop."));
+    emergencyStop();
+    return;
+  }
+
   switch (currentState) {
     case State::IDLE:
     case State::AWAITING_START:
@@ -72,7 +99,7 @@ void SlaveController::runStateMachine() {
       break;
 
     case State::HOME_REQUESTED:
-      startNextState(State::HOMING_X);
+      homeXAxis();
       break;
 
     case State::HOMING_X:
@@ -171,40 +198,79 @@ void SlaveController::runStateMachine() {
 }
 
 void SlaveController::homeXAxis() {
-  stepperX->moveTo(-100000);
-  stepperX->setMaxSpeed(motionConfig.getHomingSpeed());
-  stepperX->run();
+  // Cancel any ongoing movements and reset state
+  stepperX->stop();
+  stepperY->stop();
 
+  // Reset current positions to clear any previous targets
+  stepperX->setCurrentPosition(stepperX->currentPosition());
+  stepperY->setCurrentPosition(stepperY->currentPosition());
+
+  // Reset pattern state
+  patternInProgress = false;
+  currentPatternIndex = 0;
+
+  // Set homing speed
+  stepperX->setMaxSpeed(motionConfig.getHomingSpeed());
+  stepperX->setSpeed(
+      -motionConfig.getHomingSpeed());  // Set constant speed for homing
+
+  // Move towards home
   if (xEndstop.rose() || xEndstop.read()) {
     stepperX->stop();
     stepperX->setCurrentPosition(0);
     stepperX->setMaxSpeed(motionConfig.getSpeed());
+    stepperX->setAcceleration(motionConfig.getAcceleration());
     Serial.println(F("X axis homed"));
     currentState = State::HOMING_Y;
+  } else {
+    stepperX->runSpeed();  // Use runSpeed() instead of run()
   }
 }
 
 void SlaveController::homeYAxis() {
-  stepperY->moveTo(-100000);
+  // Set homing speed
   stepperY->setMaxSpeed(motionConfig.getHomingSpeed());
-  stepperY->run();
+  stepperY->setSpeed(
+      -motionConfig.getHomingSpeed());  // Set constant speed for homing
 
+  // Move towards home
   if (yEndstop.rose() || yEndstop.read()) {
     stepperY->stop();
     stepperY->setCurrentPosition(0);
     stepperY->setMaxSpeed(motionConfig.getSpeed());
+    stepperY->setAcceleration(motionConfig.getAcceleration());
     Serial.println(F("Y axis homed"));
     currentState = State::AWAITING_START;
     Serial.println(F("Homing complete. Send 's' to start cycle"));
+  } else {
+    stepperY->runSpeed();  // Use runSpeed() instead of run()
   }
 }
 
 bool SlaveController::moveToXYPosition(const long xPos, const long yPos) {
+  static unsigned long lastMoveDebug = 0;
+  const unsigned long MOVE_DEBUG_INTERVAL =
+      500;  // Print every 500ms during movement
+
   stepperX->moveTo(xPos);
   stepperY->moveTo(yPos);
 
   stepperX->run();
   stepperY->run();
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastMoveDebug >= MOVE_DEBUG_INTERVAL) {
+    Serial.print(F("Moving - X: "));
+    Serial.print(stepperX->currentPosition());
+    Serial.print(F("/"));
+    Serial.print(xPos);
+    Serial.print(F(" Y: "));
+    Serial.print(stepperY->currentPosition());
+    Serial.print(F("/"));
+    Serial.println(yPos);
+    lastMoveDebug = currentTime;
+  }
 
   bool xComplete = stepperX->distanceToGo() == 0;
   bool yComplete = stepperY->distanceToGo() == 0;
@@ -213,8 +279,37 @@ bool SlaveController::moveToXYPosition(const long xPos, const long yPos) {
 }
 
 void SlaveController::startNextState(const State nextState) {
+  // Debug output for state change
+  Serial.print(F("State change: "));
+  Serial.print(stateToString(currentState));
+  Serial.print(F(" -> "));
+  Serial.println(stateToString(nextState));
+
+  if (currentState == nextState) {
+    stateStartCount++;
+    if (stateStartCount >
+        1000) {  // Arbitrary threshold for repeated state entries
+      Serial.print(F("WARNING: State "));
+      Serial.print(stateToString(nextState));
+      Serial.println(F(" has been re-entered over 1000 times"));
+    }
+  } else {
+    stateStartCount = 0;
+  }
+
+  // Track time in previous state
+  unsigned long timeInPreviousState = millis() - lastStateChangeTime;
+  if (timeInPreviousState > STATE_TIMEOUT_MS) {
+    Serial.print(F("WARNING: State "));
+    Serial.print(stateToString(currentState));
+    Serial.print(F(" took "));
+    Serial.print(timeInPreviousState);
+    Serial.println(F("ms to complete"));
+  }
+
   currentState = nextState;
   stateStartTime = millis();
+  lastStateChangeTime = millis();
 }
 
 bool SlaveController::hasTimeElapsed(const unsigned long duration) {
@@ -276,15 +371,83 @@ void SlaveController::handleCommand(const String& command,
                                     const String& params) {
   if (command == "home") {
     Serial.println(F("Starting homing sequence..."));
+    // Cancel any ongoing movements
+    stepperX->stop();
+    stepperY->stop();
+    // Reset pattern state
+    patternInProgress = false;
+    // Start homing sequence
     startNextState(State::HOME_REQUESTED);
   }
 
   else if (command == "start") {
     if (stepperX->currentPosition() == 0 && stepperY->currentPosition() == 0) {
-      Serial.println(F("Starting cycle..."));
-      startNextState(State::MOVING_TO_PICK);
-      stepperX->moveTo(motionConfig.getPickDistance());
-      stepperY->moveTo(motionConfig.getPickDistance());
+      // Parse parameters: rows cols startX startY gridWidth gridLength
+      String params_str = params;
+      int firstSpace = params_str.indexOf(' ');
+      if (firstSpace != -1) {
+        String remainder = params_str.substring(firstSpace + 1);
+        int secondSpace = remainder.indexOf(' ');
+        if (secondSpace != -1) {
+          String startXStr = remainder.substring(secondSpace + 1);
+          int thirdSpace = startXStr.indexOf(' ');
+          if (thirdSpace != -1) {
+            String startYStr = startXStr.substring(thirdSpace + 1);
+            int fourthSpace = startYStr.indexOf(' ');
+            if (fourthSpace != -1) {
+              String gridWidthStr = startYStr.substring(fourthSpace + 1);
+              int fifthSpace = gridWidthStr.indexOf(' ');
+              if (fifthSpace != -1) {
+                String gridLengthStr = gridWidthStr.substring(fifthSpace + 1);
+
+                int rows = params_str.substring(0, firstSpace).toInt();
+                int cols = remainder.substring(0, secondSpace).toInt();
+                double startX = startXStr.substring(0, thirdSpace).toFloat();
+                double startY = startYStr.substring(0, fourthSpace).toFloat();
+                double gridWidth =
+                    gridWidthStr.substring(0, fifthSpace).toFloat();
+                double gridLength = gridLengthStr.toFloat();
+
+                if (rows > 0 && cols > 0 && gridWidth > 0 && gridLength > 0) {
+                  // Generate the pattern with all parameters
+                  currentPattern = patternGenerator.generatePattern(
+                      rows, cols, startX, startY, gridWidth, gridLength);
+
+                  if (currentPattern.empty()) {
+                    Serial.println(F("Error: Pattern too large for grid"));
+                    return;
+                  }
+
+                  Serial.print(F("Starting pattern with "));
+                  Serial.print(rows);
+                  Serial.print(F(" rows, "));
+                  Serial.print(cols);
+                  Serial.print(F(" columns at ("));
+                  Serial.print(startX);
+                  Serial.print(F(", "));
+                  Serial.print(startY);
+                  Serial.print(F(") with grid size "));
+                  Serial.print(gridWidth);
+                  Serial.print(F("x"));
+                  Serial.print(gridLength);
+                  Serial.println(F(" inches"));
+
+                  currentPatternIndex = 0;
+                  patternInProgress = true;
+                  startNextState(State::EXECUTING_PATTERN);
+                } else {
+                  Serial.println(F("Error: Invalid parameters. Must be > 0"));
+                }
+              }
+            }
+          }
+        }
+      }
+      if (!patternInProgress) {
+        Serial.println(
+            F("Error: Invalid parameters. Use: start ROWS COLS START_X START_Y "
+              "GRID_WIDTH GRID_LENGTH"));
+      }
     } else {
       Serial.println(F("Error: Must home axes first. Send 'home' to home."));
     }
@@ -368,18 +531,13 @@ void SlaveController::handleCommand(const String& command,
   }
 
   else if (command == "stop") {
-    // Implement emergency stop
-    stepperX->stop();
-    stepperY->stop();
-    disableSuction();
-    retractArm();
-    Serial.println(F("Emergency stop executed"));
+    emergencyStop();
   }
 
   else {
     Serial.println(F("Unknown command. Available commands:"));
     Serial.println(F("home           - Home axes"));
-    Serial.println(F("start          - Start cycle"));
+    Serial.println(F("start R C      - Start cycle with R rows and C columns"));
     Serial.println(F("goto X Y       - Move to position (inches)"));
     Serial.println(F("speed VALUE    - Set speed (inches/sec, 1-100)"));
     Serial.println(F("accel VALUE    - Set acceleration (inches/sec², 1-100)"));
@@ -389,6 +547,9 @@ void SlaveController::handleCommand(const String& command,
     Serial.println(F("suction_off    - Disable suction"));
     Serial.println(F("stop           - Emergency stop"));
   }
+
+  // Send current state after handling command
+  sendCurrentState();
 }
 
 void SlaveController::printCurrentSettings() {
@@ -405,4 +566,97 @@ void SlaveController::printCurrentSettings() {
   Serial.print(F("Y Position: "));
   Serial.print(ConversionConfig::stepsToInches(stepperY->currentPosition()));
   Serial.println(F(" inches"));
+}
+
+void SlaveController::sendCurrentState() {
+  StaticJsonDocument<200> doc;
+  doc["status"] = stateToString(currentState);
+
+  // Add any sensor states or other relevant data
+  JsonObject sensors = doc.createNestedObject("sensors");
+  sensors["x_endstop"] = xEndstop.read();
+  sensors["y_endstop"] = yEndstop.read();
+
+  Serial.print(F("STATE "));
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
+const char* SlaveController::stateToString(State state) {
+  switch (state) {
+    case State::IDLE:
+      return "IDLE";
+    case State::HOME_REQUESTED:
+      return "HOME_REQUESTED";
+    case State::HOMING_X:
+      return "HOMING_X";
+    case State::HOMING_Y:
+      return "HOMING_Y";
+    case State::AWAITING_START:
+      return "AWAITING_START";
+    case State::MOVING_TO_PICK:
+      return "MOVING_TO_PICK";
+    case State::MOVING_TO_TARGET:
+      return "MOVING_TO_TARGET";
+    case State::PICKING:
+      return "PICKING";
+    case State::PLACING:
+      return "PLACING";
+    case State::RETRACTING:
+      return "RETRACTING";
+    case State::WAITING_TO_RETRIEVE:
+      return "WAITING_TO_RETRIEVE";
+    case State::EXECUTING_PATTERN:
+      return "EXECUTING_PATTERN";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+// New method to check for commands
+void SlaveController::checkForCommands() {
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil(' ');
+    String params = Serial.readStringUntil('\n');
+    command.trim();
+    params.trim();
+
+    // Special handling for emergency stop
+    if (command == "stop") {
+      emergencyStop();
+      return;
+    }
+
+    // Other commands are only processed in IDLE or AWAITING_START states
+    if (currentState == State::IDLE || currentState == State::AWAITING_START) {
+      handleCommand(command, params);
+    }
+  }
+}
+
+void SlaveController::emergencyStop() {
+  // First stop the current movements
+  stepperX->stop();
+  stepperY->stop();
+
+  // Reset all motion state
+  stepperX->setCurrentPosition(
+      stepperX->currentPosition());  // Clear target position
+  stepperY->setCurrentPosition(
+      stepperY->currentPosition());  // Clear target position
+
+  // Reset speeds to default
+  stepperX->setMaxSpeed(motionConfig.getSpeed());
+  stepperY->setMaxSpeed(motionConfig.getSpeed());
+
+  // Reset pattern and state
+  currentPatternIndex = 0;
+  patternInProgress = false;
+  currentState = State::IDLE;
+
+  // Safety: retract and disable suction
+  disableSuction();
+  retractArm();
+
+  Serial.println(F("Emergency stop executed"));
 }

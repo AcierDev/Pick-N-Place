@@ -17,9 +17,9 @@ struct ConversionConfig {
 
 // Motion Parameters
 struct MotionConfig {
-  double speedInches = 40.0;
-  double accelerationInches = 20.0;
-  const double homingSpeedInches = 7.5;
+  double speedInches = 20.0;
+  double accelerationInches = 10.0;
+  const double homingSpeedInches = 5;
   const double pickDistanceInches = 5.0;
 
   int32_t getSpeed() const {
