@@ -25,7 +25,7 @@ const LOG_STYLES = {
     CONNECTING: chalk.blue("⟲"),
   },
   formatPosition: (x: number, y: number) =>
-    chalk.cyan(`(${x.toFixed(2)}, ${y.toFixed(2)})`),
+    chalk.cyan(`(${x.toFixed(1)}, ${y.toFixed(1)})`),
   formatHex: (data: Buffer) =>
     chalk.gray(data.toString("hex").match(/../g)?.join(" ")),
   formatTime: () => chalk.gray(`[${new Date().toLocaleTimeString()}]`),
@@ -214,8 +214,15 @@ export class SerialCommunication {
           break;
 
         case "sensors":
-          const [xEndstop, yEndstop] = value.split(",").map((v) => v === "1");
-          state.sensors = { xEndstop, yEndstop };
+          const [xEndstop, yEndstop, armExtended, suctionEnabled] = value
+            .split(",")
+            .map((v) => v === "1");
+          state.sensors = {
+            xEndstop,
+            yEndstop,
+            armExtended,
+            suctionEnabled,
+          };
           break;
       }
     });

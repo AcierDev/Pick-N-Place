@@ -13,7 +13,9 @@ SlaveController::SlaveController()
       continuousMovementIsX(false),
       continuousMovementPositive(false),
       originalXSpeed(0),
-      originalYSpeed(0) {}
+      originalYSpeed(0),
+      suctionEnabled(false),
+      armExtended(false) {}
 
 SlaveController::~SlaveController() = default;
 
@@ -170,15 +172,27 @@ void SlaveController::setupCommandHandlers() {
       return;
     }
 
-    const char* state = params["state"];
-    if (strcmp(state, "on") == 0) {
-      enableSuction();
-      Protocol::sendResponse({"ok", "Suction enabled"});
-    } else if (strcmp(state, "off") == 0) {
-      disableSuction();
-      Protocol::sendResponse({"ok", "Suction disabled"});
+    // Handle both boolean and string parameters
+    if (params["state"].is<bool>()) {
+      bool state = params["state"].as<bool>();
+      if (state) {
+        enableSuction();
+        Protocol::sendResponse({"ok", "Suction enabled"});
+      } else {
+        disableSuction();
+        Protocol::sendResponse({"ok", "Suction disabled"});
+      }
     } else {
-      Protocol::error("Invalid suction state. Use 'on' or 'off'");
+      const char* state = params["state"];
+      if (strcmp(state, "on") == 0) {
+        enableSuction();
+        Protocol::sendResponse({"ok", "Suction enabled"});
+      } else if (strcmp(state, "off") == 0) {
+        disableSuction();
+        Protocol::sendResponse({"ok", "Suction disabled"});
+      } else {
+        Protocol::error("Invalid suction state. Use true/false or 'on'/'off'");
+      }
     }
   });
 
@@ -307,23 +321,63 @@ void SlaveController::checkForCommands() {
       return;
     }
 
-    // Debug print parsed command
-    Protocol::debug("Executing command: " + String(type));
+    try {
+      // Debug print parsed command
+      Protocol::debug("Executing command: " + String(type));
 
-    // Handle command with JSON parameters
-    commandHandler.handleCommand(String(type), doc["params"]);
+      // Handle command with JSON parameters
+      commandHandler.handleCommand(String(type), doc["params"]);
+    } catch (const std::exception& e) {
+      Protocol::error("Command execution failed: " + String(e.what()), 3);
+    } catch (...) {
+      Protocol::error("Unknown error during command execution", 4);
+    }
   }
 }
 
 // Pneumatic control methods
-void SlaveController::extendArm() { digitalWrite(PinConfig::extension, LOW); }
+void SlaveController::extendArm() {
+  digitalWrite(PinConfig::extension, LOW);
+  armExtended = true;
 
-void SlaveController::retractArm() { digitalWrite(PinConfig::extension, HIGH); }
+  // Update state
+  MachineState newState;
+  newState.sensors.armExtended = true;
+  newState.sensorsChanged = true;
+  Protocol::sendState(newState);
+}
 
-void SlaveController::enableSuction() { digitalWrite(PinConfig::suction, LOW); }
+void SlaveController::retractArm() {
+  digitalWrite(PinConfig::extension, HIGH);
+  armExtended = false;
+
+  // Update state
+  MachineState newState;
+  newState.sensors.armExtended = false;
+  newState.sensorsChanged = true;
+  Protocol::sendState(newState);
+}
+
+void SlaveController::enableSuction() {
+  digitalWrite(PinConfig::suction, LOW);
+  suctionEnabled = true;
+
+  // Update state
+  MachineState newState;
+  newState.sensors.suctionEnabled = true;
+  newState.sensorsChanged = true;
+  Protocol::sendState(newState);
+}
 
 void SlaveController::disableSuction() {
   digitalWrite(PinConfig::suction, HIGH);
+  suctionEnabled = false;
+
+  // Update state
+  MachineState newState;
+  newState.sensors.suctionEnabled = false;
+  newState.sensorsChanged = true;
+  Protocol::sendState(newState);
 }
 
 void SlaveController::handleManualMove(const String& command) {
@@ -389,6 +443,15 @@ void SlaveController::updateState() {
       newYEndstop != currentState.sensors.yEndstop) {
     newState.sensors.xEndstop = newXEndstop;
     newState.sensors.yEndstop = newYEndstop;
+    newState.sensorsChanged = true;
+    stateChanged = true;
+  }
+
+  // Check pneumatic states
+  if (suctionEnabled != currentState.sensors.suctionEnabled ||
+      armExtended != currentState.sensors.armExtended) {
+    newState.sensors.suctionEnabled = suctionEnabled;
+    newState.sensors.armExtended = armExtended;
     newState.sensorsChanged = true;
     stateChanged = true;
   }

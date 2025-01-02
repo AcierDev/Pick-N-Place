@@ -37,6 +37,8 @@ class Master {
       sensors: {
         xEndstop: false,
         yEndstop: false,
+        armExtended: false,
+        suctionEnabled: false,
       },
     };
   }

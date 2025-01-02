@@ -7,6 +7,8 @@ export interface SlaveState {
   sensors?: {
     xEndstop: boolean;
     yEndstop: boolean;
+    armExtended: boolean;
+    suctionEnabled: boolean;
   };
   error?: string;
 }
@@ -79,3 +81,10 @@ export interface MachineStatus {
   };
   error?: string;
 }
+
+export type SuctionCommand = {
+  type: "suction";
+  params: {
+    state: boolean | "on" | "off";
+  };
+};

@@ -10,16 +10,13 @@ struct Point {
 
 struct MachineState {
   String status;
-  struct Position {
-    double x;
-    double y;
-  } position;
-
+  Point position;
   struct Sensors {
-    bool xEndstop;
-    bool yEndstop;
+    bool xEndstop = false;
+    bool yEndstop = false;
+    bool suctionEnabled = false;
+    bool armExtended = false;
   } sensors;
-
   String error;
 
   // Track what changed

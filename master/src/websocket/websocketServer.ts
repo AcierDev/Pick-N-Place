@@ -61,6 +61,11 @@ export class WebSocketServer {
   }
 
   broadcastState(state: MachineStatus): void {
+    console
+      .log
+      // chalk.blue("⟸ Broadcasting state:"),
+      // chalk.cyan(JSON.stringify(state))
+      ();
     this.broadcast("state", state);
   }
 
@@ -132,6 +137,14 @@ export class WebSocketServer {
     this.machineStatus = {
       ...this.machineStatus,
       ...partialState,
+      sensors: {
+        ...this.machineStatus.sensors,
+        ...(partialState.sensors || {}),
+      },
+      motion: {
+        ...this.machineStatus.motion,
+        ...(partialState.motion || {}),
+      },
     };
     this.broadcastState(this.machineStatus);
   }
@@ -198,6 +211,20 @@ export class WebSocketServer {
             },
           });
           break;
+
+        case "suction":
+          if (command.params?.state !== undefined) {
+            this.updateState({
+              sensors: {
+                ...this.machineStatus.sensors,
+                suctionEnabled:
+                  typeof command.params.state === "boolean"
+                    ? command.params.state
+                    : command.params.state === "on",
+              },
+            });
+          }
+          break;
       }
     }
   }
@@ -206,12 +233,38 @@ export class WebSocketServer {
     const machineStatus: MachineStatus = {
       ...this.machineStatus,
       state: state.status || "IDLE",
+      position: state.position
+        ? {
+            x: Math.round(state.position.x * 10) / 10,
+            y: Math.round(state.position.y * 10) / 10,
+            isHomed: this.machineStatus.position.isHomed,
+          }
+        : this.machineStatus.position,
       sensors: {
         ...this.machineStatus.sensors,
-        xEndstop: state.sensors?.xEndstop || false,
-        yEndstop: state.sensors?.yEndstop || false,
+        xEndstop:
+          state.sensors?.xEndstop ?? this.machineStatus.sensors.xEndstop,
+        yEndstop:
+          state.sensors?.yEndstop ?? this.machineStatus.sensors.yEndstop,
+        armExtended:
+          state.sensors?.armExtended ?? this.machineStatus.sensors.armExtended,
+        suctionEnabled:
+          state.sensors?.suctionEnabled ??
+          this.machineStatus.sensors.suctionEnabled,
       },
     };
+
+    // Update internal state
+    this.machineStatus = machineStatus;
+
+    // Broadcast the update
     this.broadcastState(machineStatus);
+
+    // Debug log the state change
+    console.log(
+      chalk.blue("⟹"),
+      chalk.cyan("Machine status updated:"),
+      chalk.gray(JSON.stringify(machineStatus.sensors))
+    );
   }
 }

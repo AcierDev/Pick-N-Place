@@ -32,6 +32,10 @@ class SlaveController {
   int32_t originalXSpeed;
   int32_t originalYSpeed;
 
+  // Pneumatic state tracking
+  bool suctionEnabled;
+  bool armExtended;
+
   // Private setup methods
   void setupEndstops();
   void setupSteppers();

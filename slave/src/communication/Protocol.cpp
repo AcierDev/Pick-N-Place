@@ -1,31 +1,27 @@
 #include "Protocol.h"
 
 void Protocol::sendState(const MachineState& state) {
-  if (!state.statusChanged && !state.positionChanged && !state.sensorsChanged &&
-      !state.errorChanged) {
-    return;
-  }
-
-  // Send state update in text format
-  if (state.statusChanged) {
-    Serial.write(MSG_STATE);
-    Serial.print(" status=");
-    Serial.print(state.status);
-    Serial.write('\n');
-  }
-
-  // Send position update in binary format
-  if (state.positionChanged) {
-    sendPosition(state.position.x, state.position.y);
-  }
-
-  // Send sensor update in text format
   if (state.sensorsChanged) {
     Serial.write(MSG_STATE);
     Serial.print(" sensors=");
     Serial.print(state.sensors.xEndstop ? "1" : "0");
     Serial.print(",");
     Serial.print(state.sensors.yEndstop ? "1" : "0");
+    Serial.print(",");
+    Serial.print(state.sensors.armExtended ? "1" : "0");
+    Serial.print(",");
+    Serial.print(state.sensors.suctionEnabled ? "1" : "0");
+    Serial.write('\n');
+  }
+
+  if (state.positionChanged) {
+    sendPosition(state.position.x, state.position.y);
+  }
+
+  if (state.statusChanged) {
+    Serial.write(MSG_STATE);
+    Serial.print(" status=");
+    Serial.print(state.status);
     Serial.write('\n');
   }
 }
@@ -61,7 +57,11 @@ void Protocol::error(const String& message, int code) {
 }
 
 void Protocol::sendPosition(float x, float y) {
-  uint8_t buffer[9];  // 1 byte type + 4 bytes x + 4 bytes y
+  // Round to 2 decimal places before sending
+  x = round(x * 100) / 100.0f;
+  y = round(y * 100) / 100.0f;
+
+  uint8_t buffer[9];
   buffer[0] = MSG_POS;
   memcpy(&buffer[1], &x, sizeof(float));
   memcpy(&buffer[5], &y, sizeof(float));
