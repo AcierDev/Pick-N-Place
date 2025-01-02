@@ -16,6 +16,14 @@ class MotionController {
   MotionController(StateMachine& stateMachine);  // Modified constructor
   ~MotionController();
 
+  double getCurrentX() const {
+    return ConversionConfig::stepsToInches(xAxis->currentPosition());
+  }
+
+  double getCurrentY() const {
+    return ConversionConfig::stepsToInches(yAxis->currentPosition());
+  }
+
   void moveTo(Point target);
   void home();
   void stop();

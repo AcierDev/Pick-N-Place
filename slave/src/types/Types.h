@@ -10,10 +10,30 @@ struct Point {
 
 struct MachineState {
   String status;
-  struct {
+  struct Position {
+    double x;
+    double y;
+  } position;
+
+  struct Sensors {
     bool xEndstop;
     bool yEndstop;
   } sensors;
+
+  String error;
+
+  // Track what changed
+  bool statusChanged = false;
+  bool positionChanged = false;
+  bool sensorsChanged = false;
+  bool errorChanged = false;
+
+  void clearChangeFlags() {
+    statusChanged = false;
+    positionChanged = false;
+    sensorsChanged = false;
+    errorChanged = false;
+  }
 };
 
 struct Error {

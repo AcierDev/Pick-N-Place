@@ -20,26 +20,32 @@ enum class State {
   RETRACTING,
   WAITING_TO_RETRIEVE,
   EXECUTING_PATTERN,
-  MANUAL_MOVING
+  MANUAL_MOVING,
+  MOVING
 };
 
 class StateMachine {
  private:
-  std::map<State, std::function<void()>> stateHandlers;
   State currentState;
-  unsigned long stateStartTime;
-  unsigned long stateTimeout;
+  using StateHandler = void (*)(void*);
+  StateHandler handlers[8];  // Fixed array instead of map
+  void* handlerContexts[8];
 
  public:
-  StateMachine()
-      : currentState(State::IDLE), stateStartTime(0), stateTimeout(10000) {}
+  StateMachine() : currentState(State::IDLE) {}
 
-  void registerHandler(State state, std::function<void()> handler) {
-    stateHandlers[state] = handler;
+  void registerHandler(State state, StateHandler handler, void* context) {
+    handlers[static_cast<int>(state)] = handler;
+    handlerContexts[static_cast<int>(state)] = context;
   }
 
-  void setState(State newState);
-  void update();
+  void update() {
+    if (auto handler = handlers[static_cast<int>(currentState)]) {
+      handler(handlerContexts[static_cast<int>(currentState)]);
+    }
+  }
+
+  void setState(State newState) { currentState = newState; }
   State getCurrentState() const { return currentState; }
   static String stateToString(State state);
 };

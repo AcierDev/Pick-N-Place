@@ -80,7 +80,10 @@ export class CLIHandler {
         if (args.length === 1) {
           const speed = parseFloat(args[0]);
           if (!isNaN(speed) && speed > 0 && speed <= 100) {
-            this.master.sendCommand(`speed ${speed}`);
+            this.master.sendCommand({
+              type: "setSpeed",
+              params: { speed },
+            });
           } else {
             console.log("Usage: speed <value> (1-100 inches/sec)");
           }
@@ -93,7 +96,10 @@ export class CLIHandler {
         if (args.length === 1) {
           const accel = parseFloat(args[0]);
           if (!isNaN(accel) && accel > 0 && accel <= 100) {
-            this.master.sendCommand(`accel ${accel}`);
+            this.master.sendCommand({
+              type: "setAccel",
+              params: { accel },
+            });
           } else {
             console.log("Usage: accel <value> (1-100 inches/sec²)");
           }

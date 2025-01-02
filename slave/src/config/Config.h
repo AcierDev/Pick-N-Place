@@ -4,8 +4,8 @@
 #include "ConversionConfig.h"
 
 struct MotionConfig {
-  double speedInches = 30.0;
-  double accelerationInches = 20.0;
+  double speedInches = 40.0;
+  double accelerationInches = 40.0;
   const double homingSpeedInches = 5.0;
   const double pickDistanceInches = 5.0;
 
@@ -13,6 +13,10 @@ struct MotionConfig {
   int32_t getAcceleration() const;
   int32_t getHomingSpeed() const;
   int32_t getPickDistance() const;
+
+  void setSpeed(double speed) { speedInches = speed; }
+
+  void setAcceleration(double accel) { accelerationInches = accel; }
 };
 
 struct PinConfig {

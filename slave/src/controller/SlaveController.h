@@ -13,6 +13,7 @@ class SlaveController {
   MotionController motionController;
   StateMachine stateMachine;
   PatternGenerator patternGenerator;
+  MachineState currentState;
 
   // Endstop debouncing
   Bounce xEndstop;
@@ -50,6 +51,8 @@ class SlaveController {
   void startContinuousMovement(bool isXAxis, bool isPositive, float speed,
                                float acceleration);
   void stopManualMovement();
+  void updateState();
+  void handleJsonCommand();
 
  public:
   SlaveController();

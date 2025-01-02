@@ -1,54 +1,69 @@
 #include "Protocol.h"
 
-#include <ArduinoJson.h>
-
 void Protocol::sendState(const MachineState& state) {
-  StaticJsonDocument<200> doc;
-  doc["status"] = state.status;
+  if (!state.statusChanged && !state.positionChanged && !state.sensorsChanged &&
+      !state.errorChanged) {
+    return;
+  }
 
-  JsonObject sensors = doc.createNestedObject("sensors");
-  sensors["x_endstop"] = state.sensors.xEndstop;
-  sensors["y_endstop"] = state.sensors.yEndstop;
+  // Send state update in text format
+  if (state.statusChanged) {
+    Serial.write(MSG_STATE);
+    Serial.print(" status=");
+    Serial.print(state.status);
+    Serial.write('\n');
+  }
 
-  sendJson("STATE", doc);
+  // Send position update in binary format
+  if (state.positionChanged) {
+    sendPosition(state.position.x, state.position.y);
+  }
+
+  // Send sensor update in text format
+  if (state.sensorsChanged) {
+    Serial.write(MSG_STATE);
+    Serial.print(" sensors=");
+    Serial.print(state.sensors.xEndstop ? "1" : "0");
+    Serial.print(",");
+    Serial.print(state.sensors.yEndstop ? "1" : "0");
+    Serial.write('\n');
+  }
 }
 
 void Protocol::sendResponse(const Response& response) {
-  StaticJsonDocument<200> doc;
-  doc["success"] = response.success;
-  doc["message"] = response.message;
-
-  String output;
-  serializeJson(doc, output);
-  Serial.print("RESPONSE ");
-  Serial.println(output);
+  Serial.write(MSG_RESPONSE);
+  Serial.print(response.success ? "1 " : "0 ");
+  Serial.print(response.message);
+  Serial.write('\n');
 }
 
 void Protocol::debug(const String& message) {
-  StaticJsonDocument<100> doc;
-  doc["message"] = message;
-
-  sendJson("DEBUG", doc);
+  Serial.write(MSG_DEBUG);
+  Serial.print(message);
+  Serial.write('\n');
+  Serial.flush();  // Ensure message is sent immediately
 }
 
 void Protocol::info(const String& message) {
-  StaticJsonDocument<100> doc;
-  doc["message"] = message;
-
-  sendJson("INFO", doc);
+  Serial.write(MSG_INFO);
+  Serial.print(message);
+  Serial.write('\n');
+  Serial.flush();  // Ensure message is sent immediately
 }
 
 void Protocol::error(const String& message, int code) {
-  StaticJsonDocument<100> doc;
-  doc["message"] = message;
-  doc["code"] = code;
-
-  sendJson("ERROR", doc);
+  Serial.write(MSG_ERROR);
+  Serial.print(code);
+  Serial.print(" ");
+  Serial.print(message);
+  Serial.write('\n');
+  Serial.flush();  // Ensure message is sent immediately
 }
 
-void Protocol::sendJson(const String& type, const JsonDocument& doc) {
-  Serial.print(type);
-  Serial.print(" ");
-  serializeJson(doc, Serial);
-  Serial.println();
+void Protocol::sendPosition(float x, float y) {
+  uint8_t buffer[9];  // 1 byte type + 4 bytes x + 4 bytes y
+  buffer[0] = MSG_POS;
+  memcpy(&buffer[1], &x, sizeof(float));
+  memcpy(&buffer[5], &y, sizeof(float));
+  Serial.write(buffer, sizeof(buffer));
 }

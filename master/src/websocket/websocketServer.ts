@@ -1,5 +1,11 @@
 import { WebSocket, WebSocketServer as WSServer } from "ws";
-import { Command, SlaveSettings, SlaveState } from "../typings/types";
+import {
+  Command,
+  SlaveSettings,
+  MachineStatus,
+  State,
+  SlaveState,
+} from "../typings/types";
 import chalk from "chalk";
 import { CommandHandler } from "./commandHandler";
 import { SerialCommunication } from "../serialCommunication";
@@ -8,10 +14,27 @@ export class WebSocketServer {
   private wss: WSServer;
   private connectedClients: number = 0;
   private commandHandler: CommandHandler;
+  private machineStatus: MachineStatus;
 
   constructor(port: number, serialPort: SerialCommunication) {
     this.wss = new WSServer({ port });
     this.commandHandler = new CommandHandler(serialPort);
+
+    // Initialize machine status
+    this.machineStatus = {
+      state: "IDLE",
+      position: {
+        x: 0,
+        y: 0,
+        isHomed: false,
+      },
+      sensors: {
+        xEndstop: false,
+        yEndstop: false,
+        armExtended: false,
+        suctionEnabled: false,
+      },
+    };
 
     console.log(chalk.cyan(`🌐 WebSocket server started on port ${port}`));
 
@@ -37,7 +60,7 @@ export class WebSocketServer {
     });
   }
 
-  broadcastState(state: SlaveState): void {
+  broadcastState(state: MachineStatus): void {
     this.broadcast("state", state);
   }
 
@@ -103,5 +126,92 @@ export class WebSocketServer {
 
   getConnectedClientsCount(): number {
     return this.connectedClients;
+  }
+
+  updateState(partialState: Partial<MachineStatus>) {
+    this.machineStatus = {
+      ...this.machineStatus,
+      ...partialState,
+    };
+    this.broadcastState(this.machineStatus);
+  }
+
+  inferStateFromCommand(command: Command) {
+    // Handle both string and object commands
+    if (typeof command === "string") {
+      switch (command) {
+        case "home":
+          this.updateState({ state: "HOMING_X" });
+          break;
+        case "extend":
+          this.updateState({
+            sensors: {
+              ...this.machineStatus.sensors,
+              armExtended: true,
+            },
+          });
+          break;
+        case "retract":
+          this.updateState({
+            sensors: {
+              ...this.machineStatus.sensors,
+              armExtended: false,
+            },
+          });
+          break;
+        case "suction_on":
+          this.updateState({
+            sensors: {
+              ...this.machineStatus.sensors,
+              suctionEnabled: true,
+            },
+          });
+          break;
+        case "suction_off":
+          this.updateState({
+            sensors: {
+              ...this.machineStatus.sensors,
+              suctionEnabled: false,
+            },
+          });
+          break;
+      }
+    } else {
+      // Handle object commands
+      switch (command.type) {
+        case "speed":
+          // Update machine status with new speed
+          this.updateState({
+            motion: {
+              ...this.machineStatus.motion,
+              speed: command.params?.value,
+            },
+          });
+          break;
+
+        case "accel":
+          // Update machine status with new acceleration
+          this.updateState({
+            motion: {
+              ...this.machineStatus.motion,
+              acceleration: command.params?.value,
+            },
+          });
+          break;
+      }
+    }
+  }
+
+  broadcastSlaveState(state: SlaveState): void {
+    const machineStatus: MachineStatus = {
+      ...this.machineStatus,
+      state: state.status || "IDLE",
+      sensors: {
+        ...this.machineStatus.sensors,
+        xEndstop: state.sensors?.xEndstop || false,
+        yEndstop: state.sensors?.yEndstop || false,
+      },
+    };
+    this.broadcastState(machineStatus);
   }
 }

@@ -1,7 +1,13 @@
 export { Master };
 import { SerialCommunication } from "./serialCommunication";
 import { SettingsManager } from "./settings/settings";
-import { Command, SlaveSettings, SlaveState } from "./typings/types";
+import {
+  Command,
+  SlaveSettings,
+  SlaveState,
+  MachineStatus,
+  State,
+} from "./typings/types";
 import { WebSocketServer } from "./websocket/websocketServer";
 import { PlatformIOManager } from "./util/platformioManager";
 import path from "path";
@@ -28,7 +34,10 @@ class Master {
     this.platformIO = new PlatformIOManager(slavePath);
     this.currentState = {
       status: "IDLE",
-      sensors: {},
+      sensors: {
+        xEndstop: false,
+        yEndstop: false,
+      },
     };
   }
 
@@ -59,13 +68,13 @@ class Master {
     cli.start();
   }
   sendInitialState() {
-    this.wss.broadcastState(this.currentState);
+    this.wss.broadcastSlaveState(this.currentState);
   }
 
   private setupSerialListeners(): void {
     this.serial.onStateUpdate((state: SlaveState) => {
       this.currentState = state;
-      this.wss.broadcastState(state);
+      this.wss.broadcastSlaveState(state);
     });
 
     const port = this.serial.getPort();
@@ -127,8 +136,9 @@ class Master {
     return this.settingsManager.getSettings();
   }
 
-  sendCommand(command: string): void {
+  sendCommand(command: Command): void {
     this.serial.sendCommand(command);
+    this.wss.inferStateFromCommand(command);
   }
 
   updateSettings(newSettings: Partial<SlaveSettings>): void {

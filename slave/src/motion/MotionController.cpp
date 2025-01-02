@@ -48,33 +48,18 @@ bool MotionController::isMoving() const {
 }
 
 void MotionController::update() {
-  // If we're homing, we need to keep running at constant speed
-  if (stateMachine.getCurrentState() == State::HOMING_X) {
-    xAxis->runSpeed();
-  } else if (stateMachine.getCurrentState() == State::HOMING_Y) {
-    yAxis->runSpeed();
-  } else {
-    // Normal movement updates
-    xAxis->run();
-    yAxis->run();
-  }
-
-  // Log position every ~500ms while moving
-  static unsigned long lastDebugTime = 0;
+  // Only send position every ~50ms while moving
+  static unsigned long lastPosUpdate = 0;
   const unsigned long now = millis();
 
-  if ((isMoving() || stateMachine.getCurrentState() == State::HOMING_X ||
-       stateMachine.getCurrentState() == State::HOMING_Y) &&
-      (now - lastDebugTime) >= 500) {
-    double currentX = ConversionConfig::stepsToInches(xAxis->currentPosition());
-    double currentY = ConversionConfig::stepsToInches(yAxis->currentPosition());
-
-    Protocol::debug("Position: X=" + String(currentX, 2) +
-                    "\" Y=" + String(currentY, 2) + "\"" + " Speed: X=" +
-                    String(xAxis->speed()) + " Y=" + String(yAxis->speed()));
-
-    lastDebugTime = now;
+  if (isMoving() && (now - lastPosUpdate) >= 50) {
+    Protocol::sendPosition(getCurrentX(), getCurrentY());
+    lastPosUpdate = now;
   }
+
+  // Normal movement updates
+  xAxis->run();
+  yAxis->run();
 }
 
 void MotionController::setup() {

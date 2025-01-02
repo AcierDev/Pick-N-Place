@@ -45,43 +45,54 @@ void SlaveController::setupPneumatics() {
 void SlaveController::setupCommunication() {
   Serial.begin(115200);
   Serial.println(F("Pick and Place Controller"));
+  Protocol::debug("Communication initialized");
 }
 
 void SlaveController::setupStateHandlers() {
   // Register state handlers with the state machine
-  // Implementation will depend on your state handling needs
+  stateMachine.registerHandler(
+      State::HOME_REQUESTED,
+      [](void* context) {
+        auto self = static_cast<SlaveController*>(context);
+        self->motionController.startHomingX();
+        self->stateMachine.setState(State::HOMING_X);
+      },
+      this);
 
-  stateMachine.registerHandler(State::HOME_REQUESTED, [this]() {
-    // Start with X axis
-    motionController.startHomingX();
-    stateMachine.setState(State::HOMING_X);
-  });
+  stateMachine.registerHandler(
+      State::HOMING_X,
+      [](void* context) {
+        auto self = static_cast<SlaveController*>(context);
+        if (self->xEndstop.read()) {
+          Protocol::debug("X endstop triggered during homing");
+          self->motionController.stopX();
+          self->motionController.setXHome();
+          self->motionController.startHomingY();
+          self->stateMachine.setState(State::HOMING_Y);
+        }
+      },
+      this);
 
-  stateMachine.registerHandler(State::HOMING_X, [this]() {
-    if (xEndstop.rose() || xEndstop.read()) {
-      // X endstop hit
-      motionController.stopX();
-      motionController.setXHome();
-      // Start Y homing
-      motionController.startHomingY();
-      stateMachine.setState(State::HOMING_Y);
-    }
-  });
-
-  stateMachine.registerHandler(State::HOMING_Y, [this]() {
-    if (yEndstop.rose() || yEndstop.read()) {
-      // Y endstop hit
-      motionController.stopY();
-      motionController.setYHome();
-      stateMachine.setState(State::IDLE);
-      Protocol::info("Homing complete");
-    }
-  });
+  stateMachine.registerHandler(
+      State::HOMING_Y,
+      [](void* context) {
+        auto self = static_cast<SlaveController*>(context);
+        if (self->yEndstop.rose() || self->yEndstop.read()) {
+          self->motionController.stopY();
+          self->motionController.setYHome();
+          self->stateMachine.setState(State::IDLE);
+          Protocol::info("Homing complete");
+        }
+      },
+      this);
 }
 
 void SlaveController::setupCommandHandlers() {
+  Protocol::debug("Setting up command handlers");
+
   // Home command
   commandHandler.registerCommand("home", [this](const JsonVariant& params) {
+    Protocol::debug("Home command received");
     Protocol::info("Starting homing sequence...");
     patternInProgress = false;
     stateMachine.setState(State::HOME_REQUESTED);
@@ -104,15 +115,40 @@ void SlaveController::setupCommandHandlers() {
   });
 
   // Speed command
-  commandHandler.registerCommand("setSpeed", [this](const String& params) {
-    double newSpeed = params.toFloat();
-    if (newSpeed > 0 && newSpeed <= 100.0) {
+  commandHandler.registerCommand("setSpeed", [this](const JsonVariant& params) {
+    if (!params.containsKey("speed")) {
+      Protocol::error("Missing speed value");
+      return;
+    }
+
+    double speed = params["speed"].as<double>();
+    if (speed > 0 && speed <= 100.0) {  // Keep limit at 100 inches/sec
       auto& config = MachineConfig::getInstance();
-      config.motion.speedInches = newSpeed;
-      motionController.setup();  // This will apply the new speed
-      Protocol::sendResponse({"ok", "Speed updated"});
+      config.motion.setSpeed(speed);  // Store in inches/sec
+      motionController.setup();       // MotionController will convert to steps
+      Protocol::sendResponse({"ok", "Speed updated to " + String(speed)});
     } else {
-      Protocol::error("Invalid speed. Use value between 1-100", 5);
+      Protocol::error("Invalid speed. Use value between 1-100 inches/sec");
+    }
+  });
+
+  // Acceleration command
+  commandHandler.registerCommand("setAccel", [this](const JsonVariant& params) {
+    if (!params.containsKey("accel")) {
+      Protocol::error("Missing acceleration value");
+      return;
+    }
+
+    double accel = params["accel"].as<double>();
+    if (accel > 0 && accel <= 100.0) {  // Keep limit at 100 inches/sec²
+      auto& config = MachineConfig::getInstance();
+      config.motion.setAcceleration(accel);  // Store in inches/sec²
+      motionController.setup();  // MotionController will convert to steps
+      Protocol::sendResponse(
+          {"ok", "Acceleration updated to " + String(accel)});
+    } else {
+      Protocol::error(
+          "Invalid acceleration. Use value between 1-100 inches/sec²");
     }
   });
 
@@ -179,7 +215,11 @@ void SlaveController::setupCommandHandlers() {
       return;
     }
 
-    // Generate the pattern
+    Protocol::debug("Generating pattern with " + String(rows) + " rows, " +
+                    String(cols) + " columns at (" + String(startX) + ", " +
+                    String(startY) + ") with grid size " + String(gridWidth) +
+                    "x" + String(gridLength) + " inches");
+
     currentPattern = patternGenerator.generatePattern(
         rows, cols, startX, startY, gridWidth, gridLength);
 
@@ -188,10 +228,14 @@ void SlaveController::setupCommandHandlers() {
       return;
     }
 
-    Protocol::debug("Starting pattern with " + String(rows) + " rows, " +
-                    String(cols) + " columns at (" + String(startX) + ", " +
-                    String(startY) + ") with grid size " + String(gridWidth) +
-                    "x" + String(gridLength) + " inches");
+    // Log the generated pattern points
+    String patternDebug = "Generated pattern points:";
+    for (size_t i = 0; i < currentPattern.size(); i++) {
+      patternDebug += String("\nPoint ") + String(i) + ": (" +
+                      String(currentPattern[i].x) + ", " +
+                      String(currentPattern[i].y) + ")";
+    }
+    Protocol::debug(patternDebug);
 
     currentPatternIndex = 0;
     patternInProgress = true;
@@ -217,11 +261,30 @@ void SlaveController::loop() {
   checkForCommands();
   stateMachine.update();
   motionController.update();
+  updateState();
 }
 
 void SlaveController::updateInputs() {
   xEndstop.update();
   yEndstop.update();
+
+  static bool lastXEndstop = false;
+  static bool lastYEndstop = false;
+
+  bool currentXEndstop = xEndstop.read();
+  bool currentYEndstop = yEndstop.read();
+
+  if (currentXEndstop != lastXEndstop) {
+    Protocol::debug("X endstop changed: " +
+                    String(currentXEndstop ? "TRIGGERED" : "RELEASED"));
+    lastXEndstop = currentXEndstop;
+  }
+
+  if (currentYEndstop != lastYEndstop) {
+    Protocol::debug("Y endstop changed: " +
+                    String(currentYEndstop ? "TRIGGERED" : "RELEASED"));
+    lastYEndstop = currentYEndstop;
+  }
 }
 
 void SlaveController::checkForCommands() {
@@ -229,26 +292,26 @@ void SlaveController::checkForCommands() {
     String input = Serial.readStringUntil('\n');
     input.trim();
 
-    // Check if it's a command message
-    if (input.startsWith("CMD ")) {
-      // Parse JSON command
-      StaticJsonDocument<512> doc;
-      DeserializationError error = deserializeJson(doc, input.substring(4));
+    // Parse JSON command
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, input);
 
-      if (error) {
-        Protocol::error("Failed to parse command JSON", 1);
-        return;
-      }
-
-      const char* type = doc["type"];
-      if (!type) {
-        Protocol::error("Missing command type", 2);
-        return;
-      }
-
-      // Handle command with JSON parameters
-      commandHandler.handleCommand(String(type), doc["params"]);
+    if (error) {
+      Protocol::error("Failed to parse command JSON", 1);
+      return;
     }
+
+    const char* type = doc["type"];
+    if (!type) {
+      Protocol::error("Missing command type", 2);
+      return;
+    }
+
+    // Debug print parsed command
+    Protocol::debug("Executing command: " + String(type));
+
+    // Handle command with JSON parameters
+    commandHandler.handleCommand(String(type), doc["params"]);
   }
 }
 
@@ -274,4 +337,96 @@ void SlaveController::startContinuousMovement(bool isXAxis, bool isPositive,
 
 void SlaveController::stopManualMovement() {
   // Implementation for stopping manual movement
+}
+
+void SlaveController::updateState() {
+  const unsigned long now = millis();
+  MachineState newState;
+  bool stateChanged = false;
+
+  // Check state changes every second
+  static unsigned long lastStateCheck = 0;
+  if (now - lastStateCheck >= 1000) {
+    String currentStateStr =
+        stateMachine.stateToString(stateMachine.getCurrentState());
+
+    // Only update if state actually changed
+    if (currentStateStr != currentState.status) {
+      newState.status = currentStateStr;
+      newState.statusChanged = true;
+      stateChanged = true;
+
+      // Debug state changes
+      Protocol::debug("State changed to: " + currentStateStr);
+    }
+    lastStateCheck = now;
+  }
+
+  // Check position changes during movement
+  static unsigned long lastPositionCheck = 0;
+  if (motionController.isMoving() &&
+      now - lastPositionCheck >=
+          50) {  // Increased from 100ms to 50ms for smoother updates
+    float newX = motionController.getCurrentX();
+    float newY = motionController.getCurrentY();
+
+    // Only update if position changed significantly (0.01" threshold)
+    if (abs(newX - currentState.position.x) > 0.01 ||
+        abs(newY - currentState.position.y) > 0.01) {
+      newState.position.x = newX;
+      newState.position.y = newY;
+      newState.positionChanged = true;
+      stateChanged = true;
+    }
+    lastPositionCheck = now;
+  }
+
+  // Check endstop changes
+  bool newXEndstop = xEndstop.read();
+  bool newYEndstop = yEndstop.read();
+
+  if (newXEndstop != currentState.sensors.xEndstop ||
+      newYEndstop != currentState.sensors.yEndstop) {
+    newState.sensors.xEndstop = newXEndstop;
+    newState.sensors.yEndstop = newYEndstop;
+    newState.sensorsChanged = true;
+    stateChanged = true;
+  }
+
+  // Only send updates if something actually changed
+  if (stateChanged) {
+    Protocol::sendState(newState);
+
+    // Update current state with new values
+    if (newState.statusChanged) {
+      currentState.status = newState.status;
+    }
+    if (newState.positionChanged) {
+      currentState.position = newState.position;
+    }
+    if (newState.sensorsChanged) {
+      currentState.sensors = newState.sensors;
+    }
+  }
+}
+
+void SlaveController::handleJsonCommand() {
+  String input = Serial.readStringUntil('\n');
+  input.trim();
+
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, input);
+
+  if (error) {
+    Protocol::error("Failed to parse command JSON", 1);
+    return;
+  }
+
+  const char* type = doc["type"];
+  if (!type) {
+    Protocol::error("Missing command type", 2);
+    return;
+  }
+
+  commandHandler.handleCommand(String(type), doc["params"]);
 }
