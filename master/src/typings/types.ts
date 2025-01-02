@@ -11,6 +11,7 @@ export interface SlaveState {
     suctionEnabled: boolean;
   };
   error?: string;
+  isHomed?: boolean;
 }
 
 export type State =
@@ -25,7 +26,16 @@ export type State =
 
 export type SlaveSettings = Record<SettingsKeys, any>;
 
-export type SettingsKeys = "sensorThreshold";
+export type SettingsKeys =
+  | "sensorThreshold"
+  | "speed"
+  | "acceleration"
+  | "boxWidth"
+  | "boxLength"
+  | "boxX"
+  | "boxY"
+  | "rows"
+  | "columns";
 
 export type CommandType = string;
 

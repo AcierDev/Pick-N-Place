@@ -28,10 +28,12 @@ class Master {
 
   constructor() {
     this.serial = new SerialCommunication();
-    this.wss = new WebSocketServer(8080, this.serial);
+    this.wss = new WebSocketServer(8080, this.serial, this);
     this.settingsManager = new SettingsManager("./settings.json");
     const slavePath = path.join(__dirname, "../../slave");
     this.platformIO = new PlatformIOManager(slavePath);
+
+    // Initialize with default state
     this.currentState = {
       status: "IDLE",
       sensors: {
@@ -49,18 +51,43 @@ class Master {
       throw new Error("PlatformIO CLI is required but not found");
     }
 
-    // const uploaded = await this.platformIO.uploadCode();
-    // if (!uploaded) {
-    //   throw new Error("Failed to upload slave code");
-    // }
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
     await this.settingsManager.loadSettings();
     const connected = await this.serial.connect();
     if (!connected) {
       throw new Error("Failed to connect to microcontroller");
     }
+
+    // Apply initial settings
+    const settings = this.settingsManager.getSettings();
+    console.log(
+      chalk.blue("📊 Loaded settings:"),
+      chalk.cyan(JSON.stringify(settings, null, 2))
+    );
+
+    // Update machine status with settings
+    console.log(chalk.blue("⚙️ Initializing machine status with settings..."));
+    this.wss.updateState({
+      motion: {
+        speed: settings.speed,
+        acceleration: settings.acceleration,
+      },
+      pattern: {
+        current: 0,
+        total: settings.rows * settings.columns,
+      },
+    });
+
+    // Send settings to microcontroller
+    console.log(chalk.blue("🔄 Applying settings to microcontroller..."));
+    this.serial.sendCommand({
+      type: "setSpeed",
+      params: { speed: settings.speed },
+    });
+    this.serial.sendCommand({
+      type: "setAccel",
+      params: { accel: settings.acceleration },
+    });
+
     this.setupSerialListeners();
     this.setupWebSocketListeners();
     this.sendInitialSettings();
@@ -92,7 +119,7 @@ class Master {
     });
 
     this.serial.onDebugMessage((message: string) => {
-      console.log(chalk.blue("⟸ Debug message:"), chalk.cyan(message));
+      // console.log(chalk.blue("⟸ Debug message:"), chalk.cyan(message));
     });
   }
 

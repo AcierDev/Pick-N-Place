@@ -9,6 +9,14 @@ export class SettingsManager {
     this.settingsPath = settingsPath;
     this.settings = {
       sensorThreshold: 500,
+      speed: 50,
+      acceleration: 50,
+      boxWidth: 20.0,
+      boxLength: 20.0,
+      boxX: 0,
+      boxY: 0,
+      rows: 1,
+      columns: 1,
     };
   }
 

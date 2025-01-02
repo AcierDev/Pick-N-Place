@@ -3,22 +3,24 @@ import {
   Command,
   SlaveSettings,
   MachineStatus,
-  State,
   SlaveState,
 } from "../typings/types";
 import chalk from "chalk";
 import { CommandHandler } from "./commandHandler";
 import { SerialCommunication } from "../serialCommunication";
+import { Master } from "../master";
 
 export class WebSocketServer {
   private wss: WSServer;
   private connectedClients: number = 0;
   private commandHandler: CommandHandler;
   private machineStatus: MachineStatus;
+  private master: Master;
 
-  constructor(port: number, serialPort: SerialCommunication) {
+  constructor(port: number, serialPort: SerialCommunication, master: Master) {
     this.wss = new WSServer({ port });
     this.commandHandler = new CommandHandler(serialPort);
+    this.master = master;
 
     // Initialize machine status
     this.machineStatus = {
@@ -49,6 +51,14 @@ export class WebSocketServer {
     console.log(chalk.green(`📱 New client connected from ${clientIp}`));
     console.log(
       chalk.cyan(`👥 Total connected clients: ${this.connectedClients}`)
+    );
+
+    // Send immediate status update to the new client
+    ws.send(
+      JSON.stringify({
+        type: "state",
+        data: this.machineStatus,
+      })
     );
 
     ws.on("close", () => {
@@ -91,23 +101,98 @@ export class WebSocketServer {
 
   onCommand(callback: (command: Command) => void): void {
     this.wss.on("connection", (ws) => {
+      console.log(chalk.green("✓ New WebSocket client connected"));
+
       ws.on("message", (message: string) => {
         try {
           const data = JSON.parse(message.toString());
           if (data.type === "command") {
+            const cmd = data.data;
             console.log(
               chalk.blue("⟸ WebSocket command:"),
-              chalk.cyan(JSON.stringify(data.data))
+              chalk.cyan(JSON.stringify(cmd))
             );
-            this.commandHandler.handleCommand(
-              ws,
-              data.data,
-              this.sendErrorToClient
-            );
+
+            // Convert high-level commands to serial protocol
+            let serialCommand: string = "";
+
+            switch (cmd.type) {
+              case "start":
+                if (
+                  cmd.params &&
+                  typeof cmd.params.rows === "number" &&
+                  typeof cmd.params.cols === "number" &&
+                  typeof cmd.params.startX === "number" &&
+                  typeof cmd.params.startY === "number" &&
+                  typeof cmd.params.pickupX === "number" &&
+                  typeof cmd.params.pickupY === "number"
+                ) {
+                  // Store values in settings
+                  this.master.updateSettings({
+                    rows: cmd.params.rows,
+                    columns: cmd.params.cols,
+                    boxX: cmd.params.startX,
+                    boxY: cmd.params.startY,
+                    boxWidth: cmd.params.gridWidth || 20.0,
+                    boxLength: cmd.params.gridLength || 20.0,
+                  });
+
+                  // Use provided grid dimensions or default to 20x20
+                  const gridWidth = cmd.params.gridWidth || 20.0;
+                  const gridLength = cmd.params.gridLength || 20.0;
+
+                  serialCommand = `start ${cmd.params.rows} ${cmd.params.cols} ${cmd.params.startX} ${cmd.params.startY} ${gridWidth} ${gridLength} ${cmd.params.pickupX} ${cmd.params.pickupY}`;
+                } else {
+                  console.error(
+                    "Invalid start parameters - requires rows, cols, startX, startY, pickupX, and pickupY (gridWidth and gridLength optional)"
+                  );
+                  return;
+                }
+                break;
+
+              case "setSpeed":
+                if (cmd.params && typeof cmd.params.speed === "number") {
+                  // Store speed in settings
+                  this.master.updateSettings({ speed: cmd.params.speed });
+                  // Forward command directly without modification
+                  callback(cmd);
+                } else {
+                  console.error("Invalid speed parameter");
+                  return;
+                }
+                break;
+
+              case "setAccel":
+                if (cmd.params && typeof cmd.params.accel === "number") {
+                  // Store acceleration in settings
+                  this.master.updateSettings({
+                    acceleration: cmd.params.accel,
+                  });
+                  // Forward command directly without modification
+                  callback(cmd);
+                } else {
+                  console.error("Invalid acceleration parameter");
+                  return;
+                }
+                break;
+
+              // ... rest of the cases ...
+              default:
+                serialCommand =
+                  cmd.type +
+                  (cmd.params ? " " + JSON.stringify(cmd.params) : "");
+            }
+
+            if (serialCommand) {
+              console.log(
+                chalk.yellow("⟹ Serial command:"),
+                chalk.cyan(serialCommand)
+              );
+              callback(serialCommand);
+            }
           }
         } catch (error) {
           console.error(chalk.red("✗ Error parsing command message:"), error);
-          this.broadcastError("Invalid command format");
         }
       });
     });
@@ -237,7 +322,7 @@ export class WebSocketServer {
         ? {
             x: Math.round(state.position.x * 10) / 10,
             y: Math.round(state.position.y * 10) / 10,
-            isHomed: this.machineStatus.position.isHomed,
+            isHomed: state.isHomed ?? this.machineStatus.position.isHomed,
           }
         : this.machineStatus.position,
       sensors: {

@@ -20,12 +20,12 @@ struct MotionConfig {
 };
 
 struct PinConfig {
-  static const uint8_t xPulse = 16;
-  static const uint8_t xDirection = 17;
+  static const uint8_t xPulse = 18;
+  static const uint8_t xDirection = 21;
   static const uint8_t xEndstop = 19;
   static const uint8_t yPulse = 5;
-  static const uint8_t yDirection = 18;
-  static const uint8_t yEndstop = 21;
+  static const uint8_t yDirection = 16;
+  static const uint8_t yEndstop = 17;
   static const uint8_t extension = 22;
   static const uint8_t suction = 23;
 };

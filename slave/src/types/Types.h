@@ -18,18 +18,21 @@ struct MachineState {
     bool armExtended = false;
   } sensors;
   String error;
+  bool isHomed = false;
 
   // Track what changed
   bool statusChanged = false;
   bool positionChanged = false;
   bool sensorsChanged = false;
   bool errorChanged = false;
+  bool homedStateChanged = false;
 
   void clearChangeFlags() {
     statusChanged = false;
     positionChanged = false;
     sensorsChanged = false;
     errorChanged = false;
+    homedStateChanged = false;
   }
 };
 

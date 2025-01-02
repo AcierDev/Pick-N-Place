@@ -18,6 +18,8 @@ String StateMachine::stateToString(State state) {
       return "PLACING";
     case State::EXECUTING_PATTERN:
       return "EXECUTING_PATTERN";
+    case State::MANUAL_MOVING:
+      return "MANUAL_MOVING";
     default:
       return "UNKNOWN";
   }

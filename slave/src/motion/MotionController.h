@@ -38,4 +38,11 @@ class MotionController {
   void stopY();
   void setXHome();
   void setYHome();
+  void setManualMoveX(int32_t speed, int32_t acceleration);
+  void setManualMoveY(int32_t speed, int32_t acceleration);
+  void stopManualMove();
+  int32_t getXMaxSpeed() const { return xAxis->maxSpeed(); }
+  int32_t getYMaxSpeed() const { return yAxis->maxSpeed(); }
+  void setXMaxSpeed(int32_t speed) { xAxis->setMaxSpeed(speed); }
+  void setYMaxSpeed(int32_t speed) { yAxis->setMaxSpeed(speed); }
 };

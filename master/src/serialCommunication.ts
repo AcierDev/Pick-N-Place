@@ -171,7 +171,12 @@ export class SerialCommunication {
       chalk.yellow("⟸ Sending settings:"),
       chalk.cyan(JSON.stringify(settings))
     );
-    this.port!.write(`SETTINGS ${JSON.stringify(settings)}\n`);
+    // Convert settings to command format
+    const settingsCommand = {
+      type: "settings",
+      params: settings,
+    };
+    this.port!.write(`${JSON.stringify(settingsCommand)}\n`);
   }
 
   onStateUpdate(callback: (state: SlaveState) => void): void {

@@ -24,6 +24,13 @@ void Protocol::sendState(const MachineState& state) {
     Serial.print(state.status);
     Serial.write('\n');
   }
+
+  if (state.homedStateChanged) {
+    Serial.write(MSG_STATE);
+    Serial.print(" homed=");
+    Serial.print(state.isHomed ? "1" : "0");
+    Serial.write('\n');
+  }
 }
 
 void Protocol::sendResponse(const Response& response) {

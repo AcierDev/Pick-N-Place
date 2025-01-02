@@ -16,13 +16,20 @@ class CommandHandler {
   void registerCommand(const String& command,
                        std::function<void(const JsonVariant&)> handler) {
     commandHandlers[command] = handler;
+    Protocol::debug("Registered command: " + command);
   }
 
   void handleCommand(const String& command, const JsonVariant& params) {
-    if (auto handler = commandHandlers[command]) {
-      handler(params);
+    auto it = commandHandlers.find(command);
+    if (it != commandHandlers.end()) {
+      it->second(params);
     } else {
       Protocol::error("Unknown command: " + command);
+      String registeredCommands = "Registered commands:";
+      for (const auto& pair : commandHandlers) {
+        registeredCommands += " " + pair.first;
+      }
+      Protocol::debug(registeredCommands);
     }
   }
 };

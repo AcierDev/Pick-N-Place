@@ -80,6 +80,7 @@ export class CLIHandler {
         if (args.length === 1) {
           const speed = parseFloat(args[0]);
           if (!isNaN(speed) && speed > 0 && speed <= 100) {
+            this.master.updateSettings({ speed });
             this.master.sendCommand({
               type: "setSpeed",
               params: { speed },
@@ -96,6 +97,7 @@ export class CLIHandler {
         if (args.length === 1) {
           const accel = parseFloat(args[0]);
           if (!isNaN(accel) && accel > 0 && accel <= 100) {
+            this.master.updateSettings({ acceleration: accel });
             this.master.sendCommand({
               type: "setAccel",
               params: { accel },
@@ -126,8 +128,17 @@ export class CLIHandler {
             rows > 0 &&
             cols > 0
           ) {
-            const gridWidth = 20.0;
-            const gridLength = 20.0;
+            this.master.updateSettings({
+              rows,
+              columns: cols,
+              boxX: startX,
+              boxY: startY,
+            });
+
+            const settings = this.master.getSettings();
+            const gridWidth = settings.boxWidth;
+            const gridLength = settings.boxLength;
+
             this.master.sendCommand(
               `start ${rows} ${cols} ${startX} ${startY} ${gridWidth} ${gridLength} ${pickupX} ${pickupY}`
             );
