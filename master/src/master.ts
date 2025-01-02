@@ -2,7 +2,7 @@ export { Master };
 import { SerialCommunication } from "./serialCommunication";
 import { SettingsManager } from "./settings/settings";
 import { Command, SlaveSettings, SlaveState } from "./typings/types";
-import { WebSocketServer } from "./websocketServer";
+import { WebSocketServer } from "./websocket/websocketServer";
 import { PlatformIOManager } from "./util/platformioManager";
 import path from "path";
 import { CLIHandler } from "./cli/cliHandler";
@@ -22,7 +22,7 @@ class Master {
 
   constructor() {
     this.serial = new SerialCommunication();
-    this.wss = new WebSocketServer(8080);
+    this.wss = new WebSocketServer(8080, this.serial);
     this.settingsManager = new SettingsManager("./settings.json");
     const slavePath = path.join(__dirname, "../../slave");
     this.platformIO = new PlatformIOManager(slavePath);
@@ -83,7 +83,6 @@ class Master {
     this.serial.onDebugMessage((message: string) => {
       console.log(chalk.blue("⟸ Debug message:"), chalk.cyan(message));
     });
-    
   }
 
   private setupWebSocketListeners(): void {

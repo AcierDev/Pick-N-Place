@@ -55,11 +55,11 @@ export class CLIHandler {
         break;
 
       case "home":
-        this.master.sendCommand("h");
+        this.master.sendCommand("home");
         break;
 
       case "start":
-        this.master.sendCommand("s");
+        this.master.sendCommand("start");
         break;
 
       case "move":
@@ -67,7 +67,7 @@ export class CLIHandler {
           const x = parseFloat(args[0]);
           const y = parseFloat(args[1]);
           if (!isNaN(x) && !isNaN(y)) {
-            this.master.sendCommand(`p ${x} ${y}`);
+            this.master.sendCommand(`goto ${x} ${y}`);
           } else {
             console.log("Usage: move <x> <y> (in inches)");
           }
@@ -80,7 +80,7 @@ export class CLIHandler {
         if (args.length === 1) {
           const speed = parseFloat(args[0]);
           if (!isNaN(speed) && speed > 0 && speed <= 100) {
-            this.master.sendCommand(`v ${speed}`);
+            this.master.sendCommand(`speed ${speed}`);
           } else {
             console.log("Usage: speed <value> (1-100 inches/sec)");
           }
@@ -93,7 +93,7 @@ export class CLIHandler {
         if (args.length === 1) {
           const accel = parseFloat(args[0]);
           if (!isNaN(accel) && accel > 0 && accel <= 100) {
-            this.master.sendCommand(`a ${accel}`);
+            this.master.sendCommand(`accel ${accel}`);
           } else {
             console.log("Usage: accel <value> (1-100 inches/sec²)");
           }
@@ -141,9 +141,9 @@ export class CLIHandler {
 
       case "arm":
         if (args[0] === "extend") {
-          this.master.sendCommand("x 1");
+          this.master.sendCommand("extend");
         } else if (args[0] === "retract") {
-          this.master.sendCommand("x 0");
+          this.master.sendCommand("retract");
         } else {
           console.log("Usage: arm <extend|retract>");
         }
@@ -151,20 +151,20 @@ export class CLIHandler {
 
       case "suction":
         if (args[0] === "on") {
-          this.master.sendCommand("u 1");
+          this.master.sendCommand("suction_on");
         } else if (args[0] === "off") {
-          this.master.sendCommand("u 0");
+          this.master.sendCommand("suction_off");
         } else {
           console.log("Usage: suction <on|off>");
         }
         break;
 
       case "pick":
-        this.master.sendCommand("k");
+        this.master.sendCommand("pick");
         break;
 
       case "place":
-        this.master.sendCommand("l");
+        this.master.sendCommand("place");
         break;
 
       case "info":
@@ -179,6 +179,59 @@ export class CLIHandler {
       case "stop":
         this.master.sendCommand("stop");
         console.log("Emergency stop initiated");
+        break;
+
+      case "manual":
+        if (args.length < 1) {
+          console.log("Usage: manual <direction> [speed]");
+          console.log("Directions: left, right, forward, backward");
+          console.log("Speed: 1-100 (optional, defaults to 50)");
+          break;
+        }
+
+        const direction = args[0];
+        const speed = args.length > 1 ? parseFloat(args[1]) : 50.0;
+        const acceleration = speed; // Use same value for acceleration
+
+        if (!["left", "right", "forward", "backward"].includes(direction)) {
+          console.log("Invalid direction. Use: left, right, forward, backward");
+          break;
+        }
+
+        if (isNaN(speed) || speed < 1 || speed > 100) {
+          console.log("Speed must be between 1 and 100");
+          break;
+        }
+
+        // Convert direction to axis and sign
+        let axis = "X";
+        let sign = "+";
+        switch (direction) {
+          case "left":
+            axis = "X";
+            sign = "-";
+            break;
+          case "right":
+            axis = "X";
+            sign = "+";
+            break;
+          case "forward":
+            axis = "Y";
+            sign = "+";
+            break;
+          case "backward":
+            axis = "Y";
+            sign = "-";
+            break;
+        }
+
+        this.master.sendCommand(
+          `MANUAL_MOVE ${axis} ${sign} ${speed} ${acceleration}`
+        );
+        break;
+
+      case "stop":
+        this.master.sendCommand("MANUAL_STOP");
         break;
 
       default:
@@ -220,6 +273,10 @@ Available commands:
     suction <on|off>       - Control vacuum suction
     pick                   - Execute pick sequence
     place                  - Execute place sequence
+    manual <direction> [speed] - Start continuous movement
+                              - direction: left, right, forward, backward
+                              - speed: 1-100 (optional, default 50)
+    stop                      - Stop manual movement
 `);
   }
 

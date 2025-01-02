@@ -1,4 +1,4 @@
-#include "SlaveController.h"
+#include "controller/SlaveController.h"
 
 // Create a global instance of the controller
 SlaveController controller;

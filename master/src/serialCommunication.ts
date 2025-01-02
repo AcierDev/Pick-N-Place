@@ -80,8 +80,25 @@ export class SerialCommunication {
 
   sendCommand(command: Command): void {
     this.checkConnection();
-    console.log(chalk.yellow("⟸ Sending command:"), chalk.cyan(command));
-    this.port!.write(`${command}\n`);
+    let jsonCommand: any;
+
+    if (typeof command === "string") {
+      // Convert simple commands to JSON format
+      jsonCommand = {
+        type: command,
+        params: {},
+      };
+    } else {
+      // Command is already in correct format
+      jsonCommand = command;
+    }
+
+    const serializedCommand = JSON.stringify(jsonCommand);
+    console.log(
+      chalk.yellow("⟸ Sending command:"),
+      chalk.cyan(serializedCommand)
+    );
+    this.port!.write(`CMD ${serializedCommand}\n`);
   }
 
   sendSettings(settings: SlaveSettings): void {

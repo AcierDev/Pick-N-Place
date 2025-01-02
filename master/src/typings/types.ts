@@ -9,20 +9,30 @@ export type SlaveSettings = Record<SettingsKeys, any>;
 
 export type SettingsKeys = "sensorThreshold";
 
-export type CommandType =
-  | "start"
-  | "stop"
-  | "home"
-  | "goto"
-  | "extend"
-  | "retract"
-  | "suction"
-  | "setSpeed"
-  | "setAccel";
+export type CommandType = string;
+
+export interface CommandParams {
+  direction?: string;
+  state?: "on" | "off";
+  speed?: number;
+  acceleration?: number;
+  rows?: number;
+  cols?: number;
+  startX?: number;
+  startY?: number;
+  gridWidth?: number;
+  gridLength?: number;
+  pickupX?: number;
+  pickupY?: number;
+  x?: number;
+  y?: number;
+  enabled?: boolean;
+  accel?: number;
+}
 
 export interface CommandMessage {
   type: CommandType;
-  params?: any;
+  params?: CommandParams;
 }
 
 export type Command = string | CommandMessage;

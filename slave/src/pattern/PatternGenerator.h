@@ -2,15 +2,8 @@
 
 #include <vector>
 
-/**
- * @brief Represents a 2D point in space
- */
-struct Point {
-  double x;
-  double y;
-
-  Point(double x = 0, double y = 0) : x(x), y(y) {}
-};
+#include "../communication/Protocol.h"
+#include "../types/Types.h"
 
 /**
  * @brief Generates optimized movement patterns for pick and place operations
@@ -51,8 +44,7 @@ class PatternGenerator {
 
     // Verify spacing is sufficient
     if (xSpacing < pieceSize_ || ySpacing < pieceSize_) {
-      Serial.println(
-          F("Error: Pieces won't fit in grid with required spacing"));
+      Protocol::error("Pieces won't fit in grid with required spacing");
       return pattern;
     }
 
