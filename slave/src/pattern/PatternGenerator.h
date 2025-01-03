@@ -39,34 +39,33 @@ class PatternGenerator {
     double usableLength = gridLength - 2 * borderSize_;
 
     // Calculate spacing between pieces
-    double xSpacing = (usableWidth - pieceSize_) / (cols - 1);
-    double ySpacing = (usableLength - pieceSize_) / (rows - 1);
+    double xSpacing = usableWidth / (cols - 1);
+    double ySpacing = usableLength / (rows - 1);
 
-    // Verify spacing is sufficient
+    // Add border offset to starting position
+    double adjustedStartX = startX + borderSize_;
+    double adjustedStartY = startY + borderSize_;
+
+    // Verify spacing is sufficient (compare with piece size)
     if (xSpacing < pieceSize_ || ySpacing < pieceSize_) {
       Protocol::error("Pieces won't fit in grid with required spacing");
       return pattern;
     }
 
-    // Start from back corner (max Y) and work forward
-    // For each row, alternate between left-to-right and right-to-left
-    // This creates a snake pattern that starts from the back
+    // Generate pattern points with adjusted start position
     for (int row = rows - 1; row >= 0; --row) {
-      bool leftToRight =
-          ((rows - 1 - row) % 2) == 0;  // Start left-to-right in back row
+      bool leftToRight = ((rows - 1 - row) % 2) == 0;
 
       if (leftToRight) {
-        // Move left to right
         for (int col = 0; col < cols; ++col) {
-          double x = startX + (col * xSpacing);
-          double y = startY + (row * ySpacing);
+          double x = adjustedStartX + (col * xSpacing);
+          double y = adjustedStartY + (row * ySpacing);
           pattern.emplace_back(x, y);
         }
       } else {
-        // Move right to left
         for (int col = cols - 1; col >= 0; --col) {
-          double x = startX + (col * xSpacing);
-          double y = startY + (row * ySpacing);
+          double x = adjustedStartX + (col * xSpacing);
+          double y = adjustedStartY + (row * ySpacing);
           pattern.emplace_back(x, y);
         }
       }

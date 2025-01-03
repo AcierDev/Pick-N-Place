@@ -3,11 +3,11 @@
   "speed": 78,
   "acceleration": 78,
   "boxWidth": 20,
-  "boxLength": 14,
-  "boxX": 10,
-  "boxY": 3.4,
+  "boxLength": 36,
+  "boxX": 100,
+  "boxY": 0,
   "rows": 3,
   "columns": 3,
-  "pickupX": 10,
-  "pickupY": 10
+  "pickupX": 0,
+  "pickupY": 0
 }

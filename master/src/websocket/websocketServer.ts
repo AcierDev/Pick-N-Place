@@ -478,10 +478,10 @@ export class WebSocketServer {
     // Update internal state
     this.machineStatus = machineStatus;
 
-    console.log(
-      chalk.blue("⟹ MachineStatus:"),
-      chalk.cyan(JSON.stringify(machineStatus))
-    );
+    // console.log(
+    //   chalk.blue("⟹ MachineStatus:"),
+    //   chalk.cyan(JSON.stringify(machineStatus))
+    // );
 
     // Broadcast the update
     this.broadcast("state", machineStatus);

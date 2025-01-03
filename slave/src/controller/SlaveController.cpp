@@ -252,6 +252,15 @@ void SlaveController::setupCommandHandlers() {
       return;
     }
 
+    // Add debug logging for input validation
+    Protocol::debug("Input validation passed:");
+    Protocol::debug("- Rows: " + String(rows));
+    Protocol::debug("- Cols: " + String(cols));
+    Protocol::debug("- Start position: (" + String(startX) + ", " +
+                    String(startY) + ")");
+    Protocol::debug("- Grid dimensions: " + String(gridWidth) + " x " +
+                    String(gridLength));
+
     Protocol::debug("Generating pattern with " + String(rows) + " rows, " +
                     String(cols) + " columns at (" + String(startX) + ", " +
                     String(startY) + ") with grid size " + String(gridWidth) +
@@ -260,26 +269,29 @@ void SlaveController::setupCommandHandlers() {
     currentPattern = patternGenerator.generatePattern(
         rows, cols, startX, startY, gridWidth, gridLength);
 
+    // Add debug logging for pattern generation result
     if (currentPattern.empty()) {
-      Protocol::error("Pattern too large for grid", 2);
+      Protocol::error("Failed to generate pattern - no points generated");
       return;
     }
 
     // Log the generated pattern points
-    String patternDebug = "Generated pattern points:";
+    Protocol::debug("Successfully generated " + String(currentPattern.size()) +
+                    " points:");
     for (size_t i = 0; i < currentPattern.size(); i++) {
-      patternDebug += String("\nPoint ") + String(i) + ": (" +
+      Protocol::debug("Point " + String(i) + ": (" +
                       String(currentPattern[i].x) + ", " +
-                      String(currentPattern[i].y) + ")";
+                      String(currentPattern[i].y) + ")");
     }
-    Protocol::debug(patternDebug);
 
     currentPatternIndex = 0;
     patternInProgress = true;
     currentPickupLocation = Point(pickupX, pickupY);
     stateMachine.setState(State::EXECUTING_PATTERN);
 
-    Protocol::sendResponse({"ok", "Pattern started"});
+    Protocol::sendResponse(
+        {"ok",
+         "Pattern started with " + String(currentPattern.size()) + " points"});
   });
 
   // Manual move command
