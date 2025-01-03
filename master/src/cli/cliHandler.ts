@@ -220,31 +220,16 @@ export class CLIHandler {
           break;
         }
 
-        // Convert direction to axis and sign
-        let axis = "X";
-        let sign = "+";
-        switch (direction) {
-          case "left":
-            axis = "X";
-            sign = "-";
-            break;
-          case "right":
-            axis = "X";
-            sign = "+";
-            break;
-          case "forward":
-            axis = "Y";
-            sign = "+";
-            break;
-          case "backward":
-            axis = "Y";
-            sign = "-";
-            break;
-        }
-
-        this.master.sendCommand(
-          `MANUAL_MOVE ${axis} ${sign} ${speed} ${acceleration}`
-        );
+        // Send as a proper command object instead of string concatenation
+        this.master.sendCommand({
+          type: "manual_move",
+          params: {
+            direction,
+            speed,
+            acceleration,
+            state: "START",
+          },
+        });
         break;
 
       case "stop":

@@ -1,6 +1,12 @@
 import { SerialPort } from "serialport";
 import { ReadlineParser } from "@serialport/parser-readline";
-import { SlaveState, SlaveSettings, Command, State } from "./typings/types";
+import {
+  SlaveState,
+  SlaveSettings,
+  Command,
+  State,
+  CommandMessage,
+} from "./typings/types";
 import { detectMicrocontrollerPort } from "./util/portDetection";
 import chalk from "chalk";
 
@@ -140,9 +146,10 @@ export class SerialCommunication {
 
   sendCommand(command: Command): void {
     this.checkConnection();
-    let jsonCommand: any;
+    let jsonCommand: CommandMessage;
 
     if (typeof command === "string") {
+      // Convert string commands to command objects
       jsonCommand = {
         type: command,
         params: {},
@@ -152,7 +159,6 @@ export class SerialCommunication {
     }
 
     const serializedCommand = JSON.stringify(jsonCommand);
-    // Remove the extra "CMD" prefix
     const fullCommand = `${serializedCommand}\n`;
 
     console.log(
@@ -208,9 +214,9 @@ export class SerialCommunication {
       const [key, value] = pair.split("=");
       if (!key || !value) return;
 
-      switch (key) {
+      switch (key.trim()) {
         case "status":
-          state.status = value as State;
+          state.status = value.trim() as State;
           break;
 
         case "pos":
@@ -258,12 +264,15 @@ export class SerialCommunication {
 
         case 0x53: // State update ('S')
           const stateMsg = data.slice(1).toString().trim();
-          console.log(
-            LOG_STYLES.formatTime(),
-            LOG_STYLES.INCOMING.STATE,
-            chalk.green(stateMsg)
-          );
+          // Add more detailed logging
+          // console.log(
+          //   LOG_STYLES.formatTime(),
+          //   LOG_STYLES.INCOMING.STATE,
+          //   chalk.green("Received state update:"),
+          //   chalk.cyan(stateMsg)
+          // );
           const state = this.parseStateMessage(data);
+          // console.log("Parsed state:", state); // Add debug log
           this.emitStateUpdate(state);
           break;
 

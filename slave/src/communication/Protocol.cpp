@@ -1,18 +1,17 @@
 #include "Protocol.h"
 
 void Protocol::sendState(const MachineState& state) {
-  if (state.sensorsChanged) {
-    Serial.write(MSG_STATE);
-    Serial.print(" sensors=");
-    Serial.print(state.sensors.xEndstop ? "1" : "0");
-    Serial.print(",");
-    Serial.print(state.sensors.yEndstop ? "1" : "0");
-    Serial.print(",");
-    Serial.print(state.sensors.armExtended ? "1" : "0");
-    Serial.print(",");
-    Serial.print(state.sensors.suctionEnabled ? "1" : "0");
-    Serial.write('\n');
-  }
+  // Always send sensor state with every update
+  Serial.write(MSG_STATE);
+  Serial.print(" sensors=");
+  Serial.print(state.sensors.xEndstop ? "1" : "0");
+  Serial.print(",");
+  Serial.print(state.sensors.yEndstop ? "1" : "0");
+  Serial.print(",");
+  Serial.print(state.sensors.armExtended ? "1" : "0");
+  Serial.print(",");
+  Serial.print(state.sensors.suctionEnabled ? "1" : "0");
+  Serial.write('\n');
 
   if (state.positionChanged) {
     sendPosition(state.position.x, state.position.y);
@@ -22,13 +21,6 @@ void Protocol::sendState(const MachineState& state) {
     Serial.write(MSG_STATE);
     Serial.print(" status=");
     Serial.print(state.status);
-    Serial.write('\n');
-  }
-
-  if (state.homedStateChanged) {
-    Serial.write(MSG_STATE);
-    Serial.print(" homed=");
-    Serial.print(state.isHomed ? "1" : "0");
     Serial.write('\n');
   }
 }

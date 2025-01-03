@@ -22,7 +22,10 @@ export class WebSocketServer {
     this.commandHandler = new CommandHandler(serialPort);
     this.master = master;
 
-    // Initialize machine status
+    // Get initial settings from master
+    const settings = master.getSettings();
+
+    // Initialize machine status with settings
     this.machineStatus = {
       state: "IDLE",
       position: {
@@ -36,9 +39,27 @@ export class WebSocketServer {
         armExtended: false,
         suctionEnabled: false,
       },
+      motion: {
+        speed: settings.speed,
+        acceleration: settings.acceleration,
+      },
+      pattern: {
+        current: 0,
+        total: settings.rows * settings.columns,
+        boxX: settings.boxX,
+        boxY: settings.boxY,
+        boxWidth: settings.boxWidth,
+        boxLength: settings.boxLength,
+        pickupX: settings.pickupX,
+        pickupY: settings.pickupY,
+      },
     };
 
     console.log(chalk.cyan(`🌐 WebSocket server started on port ${port}`));
+    console.log(
+      chalk.blue("📊 Initial machine status:"),
+      chalk.cyan(JSON.stringify(this.machineStatus, null, 2))
+    );
 
     this.wss.on("connection", (ws, req) => {
       this.handleNewConnection(ws, req);
@@ -88,11 +109,18 @@ export class WebSocketServer {
   }
 
   private broadcast(type: string, data: any): void {
+    const message = JSON.stringify({ type, data });
+    // console.log(chalk.blue("⟹ Broadcasting message:"), chalk.cyan(message)); // Add debug log
+
+    let clientCount = 0;
     this.wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type, data }));
+        client.send(message);
+        clientCount++;
       }
     });
+
+    console.log(chalk.blue(`✓ Broadcast to ${clientCount} clients`)); // Add debug log
   }
 
   private sendErrorToClient(ws: WebSocket, message: string): void {
@@ -117,78 +145,167 @@ export class WebSocketServer {
             let serialCommand: string = "";
 
             switch (cmd.type) {
+              case "setSpeed":
+                if (cmd.params && typeof cmd.params.speed === "number") {
+                  this.master.updateSettings({ speed: cmd.params.speed });
+                  callback(cmd);
+                } else {
+                  console.error("Invalid speed parameter");
+                }
+                break;
+
+              case "setAccel":
+                if (cmd.params && typeof cmd.params.accel === "number") {
+                  this.master.updateSettings({
+                    acceleration: cmd.params.accel,
+                  });
+                  callback(cmd);
+                } else {
+                  console.error("Invalid acceleration parameter");
+                }
+                break;
+
+              case "setPickupLocation":
+                if (
+                  cmd.params &&
+                  typeof cmd.params.x === "number" &&
+                  typeof cmd.params.y === "number"
+                ) {
+                  this.master.updateSettings({
+                    pickupX: cmd.params.x,
+                    pickupY: cmd.params.y,
+                  });
+                  // Update machine status
+                  this.updateState({
+                    pattern: {
+                      current: this.machineStatus.pattern?.current ?? 0,
+                      total: this.machineStatus.pattern?.total ?? 0,
+                      ...this.machineStatus.pattern,
+                      pickupX: cmd.params.x,
+                      pickupY: cmd.params.y,
+                    },
+                  });
+                  callback(cmd);
+                } else {
+                  console.error("Invalid pickup location parameters");
+                }
+                break;
+
+              case "setBoxCorner":
+                if (
+                  cmd.params &&
+                  typeof cmd.params.x === "number" &&
+                  typeof cmd.params.y === "number"
+                ) {
+                  this.master.updateSettings({
+                    boxX: cmd.params.x,
+                    boxY: cmd.params.y,
+                  });
+                  // Update machine status
+                  this.updateState({
+                    pattern: {
+                      current: this.machineStatus.pattern?.current ?? 0,
+                      total: this.machineStatus.pattern?.total ?? 0,
+                      ...this.machineStatus.pattern,
+                      boxX: cmd.params.x,
+                      boxY: cmd.params.y,
+                    },
+                  });
+                  callback(cmd);
+                } else {
+                  console.error("Invalid box corner parameters");
+                }
+                break;
+
+              case "goto":
+                if (
+                  cmd.params &&
+                  typeof cmd.params.x === "number" &&
+                  typeof cmd.params.y === "number"
+                ) {
+                  callback(cmd);
+                } else {
+                  console.error("Invalid goto parameters");
+                }
+                break;
+
+              case "home":
+              case "stop":
+              case "extend":
+              case "retract":
+                // Simple commands with no parameters
+                callback(cmd);
+                break;
+
+              case "suction":
+                if (
+                  (cmd.params && typeof cmd.params.state === "boolean") ||
+                  ["on", "off"].includes(cmd.params?.state as string)
+                ) {
+                  callback(cmd);
+                } else {
+                  console.error("Invalid suction state parameter");
+                }
+                break;
+
               case "start":
                 if (
                   cmd.params &&
                   typeof cmd.params.rows === "number" &&
                   typeof cmd.params.cols === "number" &&
                   typeof cmd.params.startX === "number" &&
-                  typeof cmd.params.startY === "number" &&
-                  typeof cmd.params.pickupX === "number" &&
-                  typeof cmd.params.pickupY === "number"
+                  typeof cmd.params.startY === "number"
                 ) {
-                  // Store values in settings
-                  this.master.updateSettings({
-                    rows: cmd.params.rows,
-                    columns: cmd.params.cols,
-                    boxX: cmd.params.startX,
-                    boxY: cmd.params.startY,
-                    boxWidth: cmd.params.gridWidth || 20.0,
-                    boxLength: cmd.params.gridLength || 20.0,
-                  });
-
-                  // Use provided grid dimensions or default to 20x20
-                  const gridWidth = cmd.params.gridWidth || 20.0;
-                  const gridLength = cmd.params.gridLength || 20.0;
-
-                  serialCommand = `start ${cmd.params.rows} ${cmd.params.cols} ${cmd.params.startX} ${cmd.params.startY} ${gridWidth} ${gridLength} ${cmd.params.pickupX} ${cmd.params.pickupY}`;
-                } else {
-                  console.error(
-                    "Invalid start parameters - requires rows, cols, startX, startY, pickupX, and pickupY (gridWidth and gridLength optional)"
-                  );
-                  return;
-                }
-                break;
-
-              case "setSpeed":
-                if (cmd.params && typeof cmd.params.speed === "number") {
-                  // Store speed in settings
-                  this.master.updateSettings({ speed: cmd.params.speed });
-                  // Forward command directly without modification
                   callback(cmd);
                 } else {
-                  console.error("Invalid speed parameter");
-                  return;
+                  console.error("Invalid start parameters");
                 }
                 break;
 
-              case "setAccel":
-                if (cmd.params && typeof cmd.params.accel === "number") {
-                  // Store acceleration in settings
-                  this.master.updateSettings({
-                    acceleration: cmd.params.accel,
-                  });
-                  // Forward command directly without modification
+              case "manual_move":
+                if (
+                  cmd.params &&
+                  typeof cmd.params.direction === "string" &&
+                  typeof cmd.params.state === "string" &&
+                  (!cmd.params.speed || typeof cmd.params.speed === "number") &&
+                  (!cmd.params.acceleration ||
+                    typeof cmd.params.acceleration === "number")
+                ) {
                   callback(cmd);
                 } else {
-                  console.error("Invalid acceleration parameter");
-                  return;
+                  console.error("Invalid manual move parameters");
                 }
                 break;
 
-              // ... rest of the cases ...
+              case "setBoxDimensions":
+                if (
+                  cmd.params &&
+                  typeof cmd.params.length === "number" &&
+                  typeof cmd.params.width === "number"
+                ) {
+                  this.master.updateSettings({
+                    boxLength: cmd.params.length,
+                    boxWidth: cmd.params.width,
+                  });
+                  // Update machine status
+                  this.updateState({
+                    pattern: {
+                      current: this.machineStatus.pattern?.current ?? 0,
+                      total: this.machineStatus.pattern?.total ?? 0,
+                      ...this.machineStatus.pattern,
+                      boxLength: cmd.params.length,
+                      boxWidth: cmd.params.width,
+                    },
+                  });
+                  callback(cmd);
+                } else {
+                  console.error("Invalid box dimensions parameters");
+                }
+                break;
+
               default:
-                serialCommand =
-                  cmd.type +
-                  (cmd.params ? " " + JSON.stringify(cmd.params) : "");
-            }
-
-            if (serialCommand) {
-              console.log(
-                chalk.yellow("⟹ Serial command:"),
-                chalk.cyan(serialCommand)
-              );
-              callback(serialCommand);
+                console.warn(`Unhandled command type: ${cmd.type}`);
+                callback(cmd);
             }
           }
         } catch (error) {
@@ -230,6 +347,12 @@ export class WebSocketServer {
         ...this.machineStatus.motion,
         ...(partialState.motion || {}),
       },
+      pattern: {
+        current: this.machineStatus.pattern?.current ?? 0,
+        total: this.machineStatus.pattern?.total ?? 0,
+        ...this.machineStatus.pattern,
+        ...(partialState.pattern || {}),
+      },
     };
     this.broadcastState(this.machineStatus);
   }
@@ -239,7 +362,7 @@ export class WebSocketServer {
     if (typeof command === "string") {
       switch (command) {
         case "home":
-          this.updateState({ state: "HOMING_X" });
+          this.updateState({ state: "HOME_REQUESTED" });
           break;
         case "extend":
           this.updateState({
@@ -310,11 +433,24 @@ export class WebSocketServer {
             });
           }
           break;
+
+        case "manual_move":
+          if (command.params?.state === "START") {
+            this.updateState({ state: "MANUAL_MOVING" });
+          } else if (command.params?.state === "STOP") {
+            this.updateState({ state: "IDLE" });
+          }
+          break;
       }
     }
   }
 
   broadcastSlaveState(state: SlaveState): void {
+    // console.log(
+    //   chalk.blue("⟹ WebSocket broadcasting state:"),
+    //   chalk.cyan(JSON.stringify(state))
+    // ); // Add debug log
+
     const machineStatus: MachineStatus = {
       ...this.machineStatus,
       state: state.status || "IDLE",
@@ -342,14 +478,13 @@ export class WebSocketServer {
     // Update internal state
     this.machineStatus = machineStatus;
 
-    // Broadcast the update
-    this.broadcastState(machineStatus);
-
-    // Debug log the state change
     console.log(
-      chalk.blue("⟹"),
-      chalk.cyan("Machine status updated:"),
-      chalk.gray(JSON.stringify(machineStatus.sensors))
+      chalk.blue("⟹ MachineStatus:"),
+      chalk.cyan(JSON.stringify(machineStatus))
     );
+
+    // Broadcast the update
+    this.broadcast("state", machineStatus);
+    console.log(chalk.green("✓ State broadcast complete")); // Add debug log
   }
 }

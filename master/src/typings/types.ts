@@ -10,18 +10,29 @@ export interface SlaveState {
     armExtended: boolean;
     suctionEnabled: boolean;
   };
+  motion?: {
+    speed: number;
+    acceleration: number;
+  };
   error?: string;
   isHomed?: boolean;
 }
 
 export type State =
   | "IDLE"
+  | "HOME_REQUESTED"
   | "HOMING_X"
   | "HOMING_Y"
-  | "MOVING"
+  | "AWAITING_START"
+  | "MOVING_TO_PICK"
+  | "MOVING_TO_TARGET"
   | "PICKING"
   | "PLACING"
+  | "RETRACTING"
+  | "WAITING_TO_RETRIEVE"
   | "EXECUTING_PATTERN"
+  | "MANUAL_MOVING"
+  | "MOVING"
   | "ERROR";
 
 export type SlaveSettings = Record<SettingsKeys, any>;
@@ -34,6 +45,8 @@ export type SettingsKeys =
   | "boxLength"
   | "boxX"
   | "boxY"
+  | "pickupX"
+  | "pickupY"
   | "rows"
   | "columns";
 
@@ -41,7 +54,7 @@ export type CommandType = string;
 
 export interface CommandParams {
   direction?: string;
-  state?: "on" | "off";
+  state?: "on" | "off" | "START" | "STOP";
   speed?: number;
   acceleration?: number;
   value?: number;
@@ -88,6 +101,12 @@ export interface MachineStatus {
   pattern?: {
     current: number;
     total: number;
+    boxX?: number;
+    boxY?: number;
+    boxWidth?: number;
+    boxLength?: number;
+    pickupX?: number;
+    pickupY?: number;
   };
   error?: string;
 }

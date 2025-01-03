@@ -29,10 +29,15 @@ void SlaveController::setup() {
 }
 
 void SlaveController::setupEndstops() {
-  xEndstop.attach(PinConfig::xEndstop, INPUT_PULLUP);
-  yEndstop.attach(PinConfig::yEndstop, INPUT_PULLUP);
+  Protocol::debug("Setting up endstops...");
+
+  xEndstop.attach(PinConfig::xEndstop, INPUT);
+  yEndstop.attach(PinConfig::yEndstop, INPUT);
   xEndstop.interval(TimingConfig::endstopDebounce);
   yEndstop.interval(TimingConfig::endstopDebounce);
+
+  Protocol::debug("Initial X endstop state: " + String(xEndstop.read()));
+  Protocol::debug("Initial Y endstop state: " + String(yEndstop.read()));
 }
 
 void SlaveController::setupSteppers() { motionController.setup(); }
@@ -65,12 +70,20 @@ void SlaveController::setupStateHandlers() {
       State::HOMING_X,
       [](void* context) {
         auto self = static_cast<SlaveController*>(context);
-        if (self->xEndstop.read()) {
-          Protocol::debug("X endstop triggered during homing");
+        bool triggered =
+            self->xEndstop.read();  // Using pull-down, HIGH means triggered
+
+        if (triggered) {
           self->motionController.stopX();
           self->motionController.setXHome();
           self->motionController.startHomingY();
           self->stateMachine.setState(State::HOMING_Y);
+
+          // Force an immediate state update to reflect the endstop
+          MachineState state;
+          state.sensors.xEndstop = triggered;
+          state.sensorsChanged = true;
+          Protocol::sendState(state);
         }
       },
       this);
@@ -79,11 +92,20 @@ void SlaveController::setupStateHandlers() {
       State::HOMING_Y,
       [](void* context) {
         auto self = static_cast<SlaveController*>(context);
-        if (self->yEndstop.rose() || self->yEndstop.read()) {
+        bool triggered =
+            self->yEndstop.read();  // Using pull-down, HIGH means triggered
+
+        if (triggered) {
           self->motionController.stopY();
           self->motionController.setYHome();
           self->stateMachine.setState(State::IDLE);
           Protocol::info("Homing complete");
+
+          // Force an immediate state update to reflect the endstop
+          MachineState state;
+          state.sensors.yEndstop = triggered;
+          state.sensorsChanged = true;
+          Protocol::sendState(state);
         }
       },
       this);
@@ -124,13 +146,13 @@ void SlaveController::setupCommandHandlers() {
     }
 
     double speed = params["speed"].as<double>();
-    if (speed > 0 && speed <= 100.0) {  // Keep limit at 100 inches/sec
+    if (speed > 0 && speed <= 300.0) {  // Keep limit at 300 inches/sec
       auto& config = MachineConfig::getInstance();
       config.motion.setSpeed(speed);  // Store in inches/sec
       motionController.setup();       // Update motion controller with new speed
       Protocol::sendResponse({"ok", "Speed updated to " + String(speed)});
     } else {
-      Protocol::error("Invalid speed. Use value between 1-100 inches/sec");
+      Protocol::error("Invalid speed. Use value between 1-300 inches/sec");
     }
   });
 
@@ -142,7 +164,7 @@ void SlaveController::setupCommandHandlers() {
     }
 
     double accel = params["accel"].as<double>();
-    if (accel > 0 && accel <= 100.0) {  // Keep limit at 100 inches/sec²
+    if (accel > 0 && accel <= 300.0) {  // Keep limit at 100 inches/sec²
       auto& config = MachineConfig::getInstance();
       config.motion.setAcceleration(accel);  // Store in inches/sec²
       motionController
@@ -151,7 +173,7 @@ void SlaveController::setupCommandHandlers() {
           {"ok", "Acceleration updated to " + String(accel)});
     } else {
       Protocol::error(
-          "Invalid acceleration. Use value between 1-100 inches/sec²");
+          "Invalid acceleration. Use value between 1-300 inches/sec²");
     }
   });
 
@@ -265,6 +287,7 @@ void SlaveController::setupCommandHandlers() {
   commandHandler.registerCommand("manual_move", [this](
                                                     const JsonVariant& params) {
     Protocol::debug("Executing manual_move command");
+
     if (!params.containsKey("direction") || !params.containsKey("state")) {
       Protocol::error("Missing required parameters: direction, state");
       return;
@@ -272,8 +295,8 @@ void SlaveController::setupCommandHandlers() {
 
     const char* direction = params["direction"];
     const char* state = params["state"];
-    float speed = params["speed"] | 20.0;
-    float acceleration = params["acceleration"] | 10.0;
+    float speed = params["speed"] | 20.0;  // Default speed if not specified
+    float acceleration = params["acceleration"] | 10.0;  // Default acceleration
 
     speed = constrain(speed, 1.0, 50.0);
     acceleration = constrain(acceleration, 1.0, 50.0);
@@ -281,18 +304,19 @@ void SlaveController::setupCommandHandlers() {
     if (strcmp(state, "START") == 0) {
       bool isXAxis =
           (strcmp(direction, "left") == 0 || strcmp(direction, "right") == 0);
-      bool isPositive =
-          (strcmp(direction, "right") == 0 || strcmp(direction, "up") == 0 ||
-           strcmp(direction, "forward") == 0);
+      bool isPositive = (strcmp(direction, "right") == 0 ||
+                         strcmp(direction, "forward") == 0);
 
       // Debug the direction parsing
       Protocol::debug("Direction: " + String(direction) + " isXAxis: " +
                       String(isXAxis) + " isPositive: " + String(isPositive));
 
       startContinuousMovement(isXAxis, isPositive, speed, acceleration);
+      stateMachine.setState(State::MANUAL_MOVING);
       Protocol::sendResponse({"ok", "Started manual movement"});
     } else if (strcmp(state, "STOP") == 0) {
       stopManualMovement();
+      stateMachine.setState(State::IDLE);
       Protocol::sendResponse({"ok", "Stopped manual movement"});
     } else {
       Protocol::error("Invalid state parameter. Use 'START' or 'STOP'");
@@ -320,6 +344,68 @@ void SlaveController::setupCommandHandlers() {
     Protocol::sendResponse({"ok", "Settings applied"});
   });
 
+  // Set pickup location command
+  commandHandler.registerCommand(
+      "setPickupLocation", [this](const JsonVariant& params) {
+        Protocol::debug("Setting pickup location");
+
+        if (!params.containsKey("x") || !params.containsKey("y")) {
+          Protocol::error("Missing x or y coordinates for pickup location");
+          return;
+        }
+
+        double x = params["x"].as<double>();
+        double y = params["y"].as<double>();
+
+        // Store in settings
+        auto& config = MachineConfig::getInstance();
+        config.pattern.pickupX = x;
+        config.pattern.pickupY = y;
+
+        Protocol::sendResponse({"ok", "Pickup location updated"});
+      });
+
+  // Set box corner command
+  commandHandler.registerCommand(
+      "setBoxCorner", [this](const JsonVariant& params) {
+        Protocol::debug("Setting box corner location");
+
+        if (!params.containsKey("x") || !params.containsKey("y")) {
+          Protocol::error("Missing x or y coordinates for box corner");
+          return;
+        }
+
+        double x = params["x"].as<double>();
+        double y = params["y"].as<double>();
+
+        // Store in settings
+        auto& config = MachineConfig::getInstance();
+        config.pattern.boxX = x;
+        config.pattern.boxY = y;
+
+        Protocol::sendResponse({"ok", "Box corner location updated"});
+      });
+
+  // Set box dimensions command
+  commandHandler.registerCommand(
+      "setBoxDimensions", [this](const JsonVariant& params) {
+        Protocol::debug("Setting box dimensions");
+
+        if (!params.containsKey("length") || !params.containsKey("width")) {
+          Protocol::error("Missing length or width for box dimensions");
+          return;
+        }
+
+        double length = params["length"].as<double>();
+        double width = params["width"].as<double>();
+
+        auto& config = MachineConfig::getInstance();
+        config.pattern.boxLength = length;
+        config.pattern.boxWidth = width;
+
+        Protocol::sendResponse({"ok", "Box dimensions updated"});
+      });
+
   Protocol::debug("Command handlers setup complete");
 }
 
@@ -345,11 +431,13 @@ void SlaveController::updateInputs() {
   xEndstop.update();
   yEndstop.update();
 
+  // Since we're using INPUT_PULLUP, the logic is inverted
+  // The endstop is triggered when the pin reads LOW
+  bool currentXEndstop = !xEndstop.read();  // Invert the reading
+  bool currentYEndstop = !yEndstop.read();  // Invert the reading
+
   static bool lastXEndstop = false;
   static bool lastYEndstop = false;
-
-  bool currentXEndstop = xEndstop.read();
-  bool currentYEndstop = yEndstop.read();
 
   if (currentXEndstop != lastXEndstop) {
     Protocol::debug("X endstop changed: " +
@@ -459,11 +547,6 @@ void SlaveController::startContinuousMovement(bool isXAxis, bool isPositive,
   int32_t stepSpeed = ConversionConfig::inchesToSteps(speed);
   int32_t stepAccel = ConversionConfig::inchesToSteps(acceleration);
 
-  Protocol::debug(
-      "Starting continuous movement: " + String(isXAxis ? "X-axis" : "Y-axis") +
-      " Direction: " + String(isPositive ? "positive" : "negative") +
-      " Speed: " + String(stepSpeed) + " Accel: " + String(stepAccel));
-
   if (isXAxis) {
     motionController.setManualMoveX(isPositive ? stepSpeed : -stepSpeed,
                                     stepAccel);
@@ -493,77 +576,48 @@ void SlaveController::stopManualMovement() {
 }
 
 void SlaveController::updateState() {
-  const unsigned long now = millis();
   MachineState newState;
   bool stateChanged = false;
 
-  // Check state changes every second
-  static unsigned long lastStateCheck = 0;
-  if (now - lastStateCheck >= 1000) {
-    String currentStateStr =
-        stateMachine.stateToString(stateMachine.getCurrentState());
+  // Get current state
+  String currentStateStr =
+      stateMachine.stateToString(stateMachine.getCurrentState());
 
-    if (currentStateStr != currentState.status) {
-      newState.status = currentStateStr;
-      newState.statusChanged = true;
-      stateChanged = true;
-      Protocol::debug("State changed to: " + currentStateStr);
-    }
-    lastStateCheck = now;
-  }
+  // With pull-down resistors:
+  // Pin reads LOW (0) when not triggered
+  // Pin reads HIGH (1) when triggered
+  bool currentXEndstop = xEndstop.read();
+  bool currentYEndstop = yEndstop.read();
 
-  // Check if homing state changed
-  bool isHomed = motionController.isHomed();
-  if (isHomed != currentState.isHomed) {
-    newState.isHomed = isHomed;
-    newState.homedStateChanged = true;
-    stateChanged = true;
-    Protocol::debug("Homed state changed to: " +
-                    String(isHomed ? "HOMED" : "NOT HOMED"));
-  }
-
-  // Only check position during actual movement
-  static unsigned long lastPositionCheck = 0;
-  if (motionController.isMoving() && now - lastPositionCheck >= 250) {
-    float newX = motionController.getCurrentX();
-    float newY = motionController.getCurrentY();
-
-    // Only update if position changed significantly (0.01" threshold)
-    if (abs(newX - currentState.position.x) > 0.01 ||
-        abs(newY - currentState.position.y) > 0.01) {
-      newState.position.x = newX;
-      newState.position.y = newY;
-      newState.positionChanged = true;
-      stateChanged = true;
-    }
-    lastPositionCheck = now;
-  }
-
-  // Only check sensors if they've changed
-  bool newXEndstop = xEndstop.read();
-  bool newYEndstop = yEndstop.read();
-
-  if (newXEndstop != currentState.sensors.xEndstop ||
-      newYEndstop != currentState.sensors.yEndstop ||
-      suctionEnabled != currentState.sensors.suctionEnabled ||
-      armExtended != currentState.sensors.armExtended) {
-    newState.sensors.xEndstop = newXEndstop;
-    newState.sensors.yEndstop = newYEndstop;
-    newState.sensors.suctionEnabled = suctionEnabled;
+  // Only update sensors if they've changed
+  if (currentXEndstop != currentState.sensors.xEndstop ||
+      currentYEndstop != currentState.sensors.yEndstop ||
+      armExtended != currentState.sensors.armExtended ||
+      suctionEnabled != currentState.sensors.suctionEnabled) {
+    newState.sensors.xEndstop = currentXEndstop;
+    newState.sensors.yEndstop = currentYEndstop;
     newState.sensors.armExtended = armExtended;
+    newState.sensors.suctionEnabled = suctionEnabled;
     newState.sensorsChanged = true;
     stateChanged = true;
   }
 
-  // Only send updates if something actually changed
+  // Check if state has changed
+  if (currentStateStr != currentState.status) {
+    newState.status = currentStateStr;
+    newState.statusChanged = true;
+    stateChanged = true;
+  }
+
   if (stateChanged) {
     Protocol::sendState(newState);
-
-    // Update current state with new values
-    if (newState.statusChanged) currentState.status = newState.status;
-    if (newState.positionChanged) currentState.position = newState.position;
-    if (newState.sensorsChanged) currentState.sensors = newState.sensors;
-    if (newState.homedStateChanged) currentState.isHomed = newState.isHomed;
+    // Update current state
+    if (newState.sensorsChanged) {
+      currentState.sensors = newState.sensors;
+    }
+    if (newState.statusChanged) {
+      currentState.status = newState.status;
+    }
   }
 }
 

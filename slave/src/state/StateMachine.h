@@ -45,7 +45,13 @@ class StateMachine {
     }
   }
 
-  void setState(State newState) { currentState = newState; }
+  void setState(State newState) {
+    if (currentState != newState) {
+      Protocol::debug("State transition: " + stateToString(currentState) +
+                      " -> " + stateToString(newState));
+      currentState = newState;
+    }
+  }
   State getCurrentState() const { return currentState; }
   static String stateToString(State state);
 };

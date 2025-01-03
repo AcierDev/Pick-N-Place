@@ -1,11 +1,13 @@
 {
   "sensorThreshold": 500,
-  "speed": 16,
-  "acceleration": 36,
+  "speed": 78,
+  "acceleration": 78,
   "boxWidth": 20,
-  "boxLength": 20,
-  "boxX": 1,
-  "boxY": 10,
+  "boxLength": 14,
+  "boxX": 10,
+  "boxY": 3.4,
   "rows": 3,
-  "columns": 3
+  "columns": 3,
+  "pickupX": 10,
+  "pickupY": 10
 }

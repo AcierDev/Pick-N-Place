@@ -20,12 +20,12 @@ struct MotionConfig {
 };
 
 struct PinConfig {
-  static const uint8_t xPulse = 18;
-  static const uint8_t xDirection = 21;
+  static const uint8_t xPulse = 5;
+  static const uint8_t xDirection = 18;
   static const uint8_t xEndstop = 19;
-  static const uint8_t yPulse = 5;
-  static const uint8_t yDirection = 16;
-  static const uint8_t yEndstop = 17;
+  static const uint8_t yPulse = 16;
+  static const uint8_t yDirection = 17;
+  static const uint8_t yEndstop = 21;
   static const uint8_t extension = 22;
   static const uint8_t suction = 23;
 };
@@ -40,6 +40,15 @@ struct TimingConfig {
   static const unsigned long waitRetrieveDelay = 1000;
 };
 
+struct PatternConfig {
+  double boxX = 0.0;
+  double boxY = 0.0;
+  double pickupX = 0.0;
+  double pickupY = 0.0;
+  double boxWidth = 0.0;
+  double boxLength = 0.0;
+};
+
 class MachineConfig {
  public:
   static MachineConfig& getInstance() {
@@ -48,6 +57,7 @@ class MachineConfig {
   }
 
   MotionConfig motion;
+  PatternConfig pattern;
   PinConfig pins;
   TimingConfig timing;
 

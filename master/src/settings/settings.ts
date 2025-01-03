@@ -15,6 +15,8 @@ export class SettingsManager {
       boxLength: 20.0,
       boxX: 0,
       boxY: 0,
+      pickupX: 0,
+      pickupY: 0,
       rows: 1,
       columns: 1,
     };
